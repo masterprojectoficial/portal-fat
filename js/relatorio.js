@@ -14,11 +14,11 @@
   const compBR = (c) => (c ? c.slice(5, 7) + '/' + c.slice(0, 4) : '');
 
   const CSS = `
-  :root{--navy:#1f497d;--navy-d:#17375e;--navy-dd:#0f2744;--navy-l:#e8eef6;--ink:#18212e;--muted:#5f6b7b;--line:#e1e6ed;--ok:#1a7a4c;--ok-l:#e5f4ec;--warn:#9a5b06;--warn-l:#fdf3e2;--bad:#b42318;--bad-l:#fdecea}
+  :root{--navy:#01314f;--navy-d:#00233b;--navy-dd:#00162e;--navy-l:#e6eef4;--accent:#d28027;--ink:#0f172a;--muted:#5f6b7b;--line:#e1e6ed;--ok:#1a7a4c;--ok-l:#e5f4ec;--warn:#9a5b06;--warn-l:#fdf3e2;--bad:#b42318;--bad-l:#fdecea}
   *{box-sizing:border-box}
-  body{margin:0;background:#f4f6f9;color:var(--ink);font:14px/1.5 "Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif}
+  body{margin:0;background:#f4f6f9;color:var(--ink);font:14px/1.5 Inter,"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif}
   .wrap{max-width:1180px;margin:0 auto;padding:24px 16px 48px}
-  header.top{background:var(--navy-dd);color:#fff}
+  header.top{background:var(--navy-dd);color:#fff;box-shadow:inset 0 -3px 0 var(--accent)}
   header.top .wrap{display:flex;align-items:center;gap:18px;padding-top:16px;padding-bottom:16px}
   header.top img{height:40px;background:#fff;border-radius:0;padding:4px 8px}
   header.top .t{flex:1;min-width:0}

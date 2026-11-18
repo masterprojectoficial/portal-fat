@@ -161,7 +161,7 @@
   const pausa = () => new Promise((r) => setTimeout(r, 30));
 
   // ---------- roteamento ----------
-  const ROTAS = { inicio: vInicio, frente1: vFrente1, frente2: vFrente2, frente3: vFrente3, regras: vRegras, historico: vHistorico, usuarios: vUsuarios, senha: vSenha };
+  const ROTAS = { inicio: vInicio, guia: vGuia, frente1: vFrente1, frente2: vFrente2, frente3: vFrente3, regras: vRegras, historico: vHistorico, usuarios: vUsuarios, senha: vSenha };
   function render() {
     const r = ROTAS[state.rota] ? state.rota : 'inicio';
     document.querySelectorAll('.side a').forEach((a) => a.classList.toggle('on', a.dataset.route === r));
@@ -252,7 +252,71 @@
       ${vis.length ? `<div class="tbl-wrap"><table class="fila"><thead><tr><th>Frente</th><th>Situação</th><th>Com quem</th><th>Desde</th><th>Próximo passo</th><th></th></tr></thead><tbody>${vis.map((q) => `<tr class="${q.cls}"><td class="fr">${esc(q.n)} · ${esc(q.nome)}<small>${esc(q.det)}</small></td><td>${q.tag}</td><td>${esc(q.quem)}</td><td class="small">${esc(q.desde)}</td><td class="nx">${esc(q.prox)}</td><td class="num"><a class="btn ${q.papel === 'aprov' || q.papel === 'exec' ? '' : 'ghost'} sm" href="#${q.rota}">${esc(q.acao)}</a></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Nada com essa pessoa agora.</div>'}
       <p class="small muted" style="margin-top:10px">${R.ativo ? 'A fila é a mesma para todo mundo que entra no portal. Use "Atualizar" para ver o que mudou desde que você abriu a página.' : 'A fila mostra o trabalho aberto neste navegador. No modo local, executora e aprovadora usam o mesmo computador.'}</p></div>
       <div class="card"><div class="card-head"><h2>Concluídas recentemente</h2><a class="btn ghost sm" href="#historico">Ver histórico</a></div>${hist.length ? tabelaHistorico(hist.slice(0, 6)) : '<div class="empty">Nenhuma aprovação registrada ainda.</div>'}</div>
-      <div class="card"><div class="card-head"><h2>Como funciona</h2></div><ol class="flow" style="margin:0" aria-label="Fluxo das frentes">${passos.map(([t, d], i) => `<li><span class="dot">${i + 1}</span><span><b>${t}</b><small>${d}</small></span></li>`).join('')}</ol></div>`;
+      <div class="card"><div class="card-head"><h2>Como funciona</h2><a class="btn ghost sm" href="#guia">Ver o passo a passo completo</a></div><ol class="flow" style="margin:0" aria-label="Fluxo das frentes">${passos.map(([t, d], i) => `<li><span class="dot">${i + 1}</span><span><b>${t}</b><small>${d}</small></span></li>`).join('')}</ol></div>`;
+  }
+
+  // ======================================================== COMO FUNCIONA
+  const FR_ATUAL = () => (state.rota === 'frente2' ? 'f2' : 'f1');
+  const NOME_PAPEL = { admin: 'administradora', executora: 'executora', aprovadora: 'aprovadora' };
+
+  // O que a pessoa logada precisa fazer agora nesta frente.
+  function passoAgora(fr) {
+    const s = state[fr], st = s.fluxo.status, f1 = fr === 'f1';
+    const exec = podeExecutar(), aprov = s.res && podeAprovar(s);
+    const quemAprova = s.valPor || 'a aprovadora';
+    if (!s.res) return exec
+      ? { vez: true, t: 'Subir os relatórios e processar', p: f1
+        ? ['Escolha a rotina (Faturamento no 1º dia útil, Baixas no 4º dia útil) e a competência.', 'Arraste os três relatórios: Integração do Protheus, Movimentação Contábil do Lyceum e Razão do Protheus. Pode ser um Excel só, com as abas.', 'Clique em "Processar conferência". Os arquivos são lidos no seu computador e só o resultado vai para o portal.']
+        : ['Escolha a competência.', 'Arraste o Razão do Protheus (contas de resultado) e a Base de Alunos do BI. A lista de alunos do Lyceum é opcional.', 'Clique em "Gerar resumo".'] }
+      : { vez: false, t: 'Aguardando a executora', p: ['A executora sobe os relatórios e processa. Quando ela enviar para aprovação, a conferência aparece na sua fila de trabalho.'] };
+    if (st === 'rascunho') return exec
+      ? { vez: true, t: f1 ? 'Conferir e registrar as decisões' : 'Conferir o resumo', p: f1
+        ? ['Veja a pré-análise das regras e a matriz unidade x dia. As células vermelhas são os dias e as unidades com pendência.', 'Em "Pendências", registre uma decisão para cada operação: Reprocessar, Justificar, Criar regra ou Abrir chamado, com observação quando ajudar. Tudo é salvo sozinho.', `No fim da página, em "Aprovação", escolha ${esc(quemAprova)} e clique em "Enviar para aprovação".`]
+        : ['Confira o consolidado, o check (razão x resumo e alunos BI x resumo) e as exceções.', `No fim da página, em "Aprovação", escolha ${esc(quemAprova)} e clique em "Enviar para aprovação".`] }
+      : { vez: false, t: 'Em conferência com a executora', p: ['A executora está registrando as decisões. Quando ela enviar, a conferência aparece na sua fila de trabalho.'] };
+    if (st === 'devolvido') return exec
+      ? { vez: true, t: 'Ajustar o que foi devolvido', p: ['Leia o motivo da devolução no quadro "Aprovação", no fim da página. Os itens em desacordo aparecem em vermelho nas tabelas, com a observação da aprovadora.', 'Ajuste as decisões. Se precisar de arquivos novos, suba e processe de novo: o trâmite e o aval dos itens que continuam são mantidos.', 'Clique em "Reenviar para aprovação".'] }
+      : { vez: false, t: 'Devolvido para a executora', p: ['A conferência voltou para ajuste. Quando a executora reenviar, ela aparece na sua fila de trabalho, já filtrada nos itens em desacordo.'] };
+    if (st === 'em_aprovacao') return aprov
+      ? { vez: true, t: 'Dar o aval e decidir', p: [`No painel "Aval da aprovadora", avalie cada item: De acordo (tecla A) ou Não de acordo (tecla N). Use as setas para navegar. Ao marcar de acordo, o portal já vai para o próximo item.`, 'Em item com problema, marque Não de acordo e escreva a observação: ela volta junto com a devolução.', 'Em "Decisão final", marque a confirmação de que revisou e clique em "Aprovar". Se algum item estiver em desacordo, use "Devolver para ajuste".'] }
+      : { vez: false, t: `Com ${esc(quemAprova)} para aprovação`, p: [R.ativo && s.fluxo.envio && s.fluxo.envio.usuario_id === R.me.id && papel() !== 'admin' ? 'Você enviou esta conferência, então a aprovação fica com outra pessoa. Enquanto isso, as decisões ficam travadas.' : 'A aprovadora está dando o aval item a item. Se ela devolver, a conferência volta para a sua fila com os itens marcados.'] };
+    return { vez: true, t: 'Aprovado: pegar o resultado final', p: [`No fim da página, em "Resultado final", baixe o relatório em HTML (com o carimbo da aprovação) e o Excel${f1 ? ', e a lista de reprocessamento só com os dias e unidades pendentes' : ' com uma aba por unidade'}.`, 'O relatório também fica guardado no "Histórico de aprovações" para qualquer pessoa reabrir.', 'Para a próxima competência, é só subir os novos relatórios.'] };
+  }
+
+  function guiaAgora(fr) {
+    const g = passoAgora(fr);
+    return `<section class="agora ${g.vez ? 'vez' : 'espera'}" aria-label="O que fazer agora"><div class="agora-h"><span class="pill ${g.vez ? 'info' : 'mute'}">${g.vez ? (R.ativo ? 'Sua vez' : 'Próximo passo') : 'Aguardando'}</span><b>${g.t}</b><a href="#guia" class="small">Como funciona</a></div>
+      <ol>${g.p.map((x) => `<li>${x}</li>`).join('')}</ol></section>`;
+  }
+
+  function vGuia() {
+    const voce = R.ativo ? `<p class="small muted" style="margin-top:6px">Você entrou como <b>${esc(NOME_PAPEL[papel()] || '')}</b>.</p>` : '';
+    const etapa = (n, t, quem, itens) => `<li class="g-etapa"><span class="g-n">${n}</span><div><h3>${t}</h3><p class="small muted">${quem}</p><ul>${itens.map((x) => `<li>${x}</li>`).join('')}</ul></div></li>`;
+    return cabecalho('Ajuda', 'Como funciona o portal', 'O mesmo fluxo vale para as duas frentes: quem executa sobe e confere, quem aprova dá o aval item a item, e só depois da aprovação sai o resultado final.') + voce +
+      `<div class="card"><div class="card-head"><h2>As quatro etapas</h2></div><ol class="g-etapas">
+        ${etapa(1, 'Envio dos arquivos', 'Executora', ['Frente 1 (Conferência da Integração): rotina Faturamento no 1º dia útil e Baixas no 4º dia útil. Relatório de Integração do Protheus, Movimentação Contábil do Lyceum e Razão do Protheus.', 'Frente 2 (Resumo de Tópicos): mensal. Razão do Protheus (contas de resultado) e Base de Alunos do BI. A lista de alunos do Lyceum é opcional.', 'Os arquivos são lidos no computador de quem sobe e não vão para o servidor. Só o resultado da conferência fica guardado no portal.'])}
+        ${etapa(2, 'Conferência', 'Executora', ['O portal cruza as bases e mostra o que precisa de atenção: pré-análise das regras, matriz unidade x dia, pendências e justificadas (Frente 1); consolidado, check e exceções (Frente 2).', 'Na Frente 1, a executora registra uma decisão para cada pendência: Reprocessar, Justificar, Criar regra ou Abrir chamado. Tudo é salvo sozinho.', 'No fim da página, ela escolhe a aprovadora e clica em "Enviar para aprovação".'])}
+        ${etapa(3, 'Aprovação', 'Aprovadora (Raquel)', ['A conferência aparece na fila de trabalho dela, com o painel "Aval da aprovadora" no topo da frente.', 'Ela avalia cada item: De acordo ou Não de acordo, com observação. Atalhos: A, N e as setas.', 'Para aprovar, todos os itens precisam estar de acordo e ela marca a confirmação de que revisou. Se algo estiver errado, ela devolve: a conferência volta para a executora com os itens e as observações.'])}
+        ${etapa(4, 'Resultado final', 'Todas as pessoas', ['Depois da aprovação saem o relatório final em HTML (com o carimbo da aprovação, o trâmite e o aval item a item) e o Excel.', 'O relatório fica no "Histórico de aprovações" e pode ser reaberto por qualquer pessoa do portal.'])}
+      </ol></div>
+      <div class="grid f" style="margin-bottom:16px">
+        <div class="card" style="margin:0"><div class="card-head"><h2>Executora</h2></div><ul class="g-lista"><li>Sobe os relatórios e processa</li><li>Registra as decisões das pendências</li><li>Envia e reenvia para aprovação</li><li>Ajusta as regras e os parâmetros</li><li>Baixa o resultado final</li></ul></div>
+        <div class="card" style="margin:0"><div class="card-head"><h2>Aprovadora</h2></div><ul class="g-lista"><li>Dá o aval em cada item</li><li>Aprova ou devolve para ajuste</li><li>Consulta regras e histórico</li><li>Baixa o resultado final</li></ul></div>
+        <div class="card" style="margin:0"><div class="card-head"><h2>Administradora</h2></div><ul class="g-lista"><li>Faz tudo o que as outras fazem</li><li>Cadastra as pessoas e define o perfil</li><li>Gera nova senha temporária</li><li>Desativa quem sai do processo</li></ul></div>
+      </div>
+      <div class="card"><div class="card-head"><h2>Regras que o portal garante</h2></div><ul class="g-lista">
+        <li>Quem envia uma conferência não aprova essa mesma conferência.</li>
+        <li>Enquanto a frente está com a aprovadora, ninguém reprocessa nem muda as decisões.</li>
+        <li>Aprovação só com todos os itens de acordo e com a confirmação marcada. Devolução precisa de item em desacordo ou de um parecer.</li>
+        <li>O relatório final só é liberado depois da aprovação e não pode ser trocado depois.</li>
+        <li>Toda aprovação e devolução fica registrada no histórico, com quem fez e quando.</li>
+      </ul></div>
+      <div class="card"><div class="card-head"><h2>Dúvidas comuns</h2></div><dl class="g-faq">
+        <dt>Esqueci a senha ou fui bloqueada.</dt><dd>Depois de 5 senhas erradas o acesso fica bloqueado por 15 minutos. A administradora pode gerar uma nova senha temporária na tela "Usuários".</dd>
+        <dt>A tela não mostra o que a outra pessoa acabou de fazer.</dt><dd>Clique em "Atualizar" na fila de trabalho ou troque de página no menu: o portal busca a situação mais recente.</dd>
+        <dt>Preciso corrigir algo depois de aprovado.</dt><dd>Suba os relatórios de novo e processe: começa uma conferência nova, que passa pelo mesmo fluxo. A aprovada continua no histórico.</dd>
+        <dt>Aparece "Salvando..." no topo.</dt><dd>As decisões e o aval são salvos sozinhos em poucos segundos. Espere aparecer "Salvo às..." antes de fechar a página.</dd>
+      </dl></div>`;
   }
 
   // ======================================================== FRENTE 1
@@ -264,7 +328,7 @@
     const tabelasNoArquivo = s.reports.tipoOperacao || s.reports.regra;
     let html = cabecalho('Frente 1', 'Conferência da Integração',
       'Confere se tudo que foi gerado no Lyceum subiu para o Protheus e entrou no razão. O "verde" da integração não basta: só o cruzamento com o razão confirma.',
-      `<div>${pillFluxo(s)}</div>`) + etapas(s, pronto);
+      `<div>${pillFluxo(s)}</div>`) + etapas(s, pronto) + guiaAgora(FR_ATUAL());
 
     html += blocoAprovacao('f1');
     const upInner = `<div class="row" style="margin-bottom:16px">
@@ -568,7 +632,7 @@
     const pronto = !!(s.reports.razao && s.reports.razao.rows && s.reports.baseAlunos && s.reports.baseAlunos.rows);
     let html = cabecalho('Frente 2', 'Resumo de Tópicos',
       'Abertura da receita por unidade, tipo de aluno (pagante, ProUni, FIES) e semestre, a partir da mesma base: razão do Protheus classificado por tópico e base de alunos do BI.',
-      `<div>${pillFluxo(s)}</div>`) + etapas(s, pronto);
+      `<div>${pillFluxo(s)}</div>`) + etapas(s, pronto) + guiaAgora(FR_ATUAL());
 
     html += blocoAprovacao('f2');
     const upInner = `<div class="row" style="margin-bottom:16px"><label class="fld">Competência<input type="month" data-bind="f2.competencia" value="${esc(s.competencia)}"></label>
