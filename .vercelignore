@@ -1,0 +1,11 @@
+# Não publicar: dados reais de exemplo, testes, scripts de banco e segredos
+exemplos/
+test/
+scripts/
+tmp-teste/
+docs/
+*.xlsx
+*.xls
+*.csv
+.env*
+LEIA-ME.md

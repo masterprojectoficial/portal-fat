@@ -1,0 +1,13 @@
+node_modules/
+.vercel/
+.env
+.env.*
+!.env.example
+*.log
+tmp-teste/
+# planilhas do cliente nunca vão para o git
+*.xlsx
+*.xls
+*.csv
+# relatórios de exemplo têm dados reais de set/26
+exemplos/
