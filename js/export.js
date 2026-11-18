@@ -88,9 +88,9 @@
     const XLSX = root.XLSX;
     const wb = XLSX.utils.book_new();
     const tp = res.topicos;
-    const cab = ['Unidade', 'Qtd alunos', 'Ticket médio', ...tp];
-    const linhas = [...res.consolidado, res.totalGeral].map((c) => [c.unidade, c.qtd, c.ticket, ...tp.map((t) => c[t])]);
-    XLSX.utils.book_append_sheet(wb, aoaSheet([['Resumo de Tópicos - ' + meta.competencia], ['Validado por', meta.validadoPor || '(não validado)', 'em', meta.validadoEm || ''], [], cab, ...linhas], [22, 12, 14, ...tp.map(() => 16)]), 'Consolidado');
+    const cab = ['Unidade', 'Qtd alunos', 'Ticket médio', 'Ticket médio líquido', ...tp];
+    const linhas = [...res.consolidado, res.totalGeral].map((c) => [c.unidade, c.qtd, c.ticket, c.ticketLiquido, ...tp.map((t) => c[t])]);
+    XLSX.utils.book_append_sheet(wb, aoaSheet([['Resumo de Tópicos - ' + meta.competencia], ['Validado por', meta.validadoPor || '(não validado)', 'em', meta.validadoEm || ''], [], cab, ...linhas], [22, 12, 14, 16, ...tp.map(() => 16)]), 'Consolidado');
     XLSX.utils.book_append_sheet(wb, sheet(res.unidades, [
       { titulo: 'Unidade', v: 'unidade', largura: 22 }, { titulo: 'Faturamento resumo', v: (u) => u.check.faturamentoResumo, largura: 18 },
       { titulo: 'Faturamento razão', v: (u) => u.check.faturamentoRazao, largura: 18 }, { titulo: 'Diferença', v: (u) => u.check.difFaturamento },
@@ -102,9 +102,14 @@
         aoa.push([t], ['Semestre', 'Qtd alunos', 'Ticket médio', ...tp, 'Ticket médio líquido']);
         u.blocos[t].forEach((l) => aoa.push([l.serie, l.qtd, l.ticket, ...tp.map((k) => l.valores[k]), l.ticketLiquido]));
         const tb = u.totalBloco[t];
-        aoa.push(['Total ' + t, tb.qtd, tb.ticket, ...tp.map((k) => tb.valores[k])], []);
+        aoa.push(['Total ' + t, tb.qtd, tb.ticket, ...tp.map((k) => tb.valores[k]), tb.ticketLiquido], []);
       });
-      aoa.push(['Total unidade', u.total.qtd, u.total.ticket, ...tp.map((k) => u.total.valores[k])]);
+      aoa.push(['Total unidade', u.total.qtd, u.total.ticket, ...tp.map((k) => u.total.valores[k]), u.total.ticketLiquido], []);
+      const rs = u.resumoSemestre;
+      aoa.push(['Resumo por semestre'], ['Semestre', 'Total alunos', 'Ticket bruto', 'Receita bruta', 'Ticket líquido', 'Receita líquida']);
+      rs.linhas.forEach((l) => aoa.push([l.serie, l.qtd, l.ticketBruto, l.receitaBruta, l.ticketLiquido, l.receitaLiquida]));
+      aoa.push(['Total', rs.total.qtd, rs.total.ticketBruto, rs.total.receitaBruta, rs.total.ticketLiquido, rs.total.receitaLiquida]);
+      aoa.push(['Conferência', rs.dif.alunos, '', rs.dif.receitaBruta, '', rs.dif.receitaLiquida]);
       XLSX.utils.book_append_sheet(wb, aoaSheet(aoa, [16, 12, 14, ...tp.map(() => 16)]), u.unidade.slice(0, 31));
     });
     const ex = res.excecoes;

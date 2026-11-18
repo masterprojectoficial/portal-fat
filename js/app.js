@@ -40,7 +40,7 @@
   const state = {
     rota: 'inicio',
     f1: { rotina: 'Faturamento', competencia: mesAnterior(), reports: {}, res: null, filtro: 'todas', filial: '', dia: '', busca: '', decisoes: {}, aval: {}, fluxo: fluxoNovo(), envPor: 'Master Project', envObs: '', valPor: 'Raquel', valObs: '', valCheck: false, sel: '', avalFiltro: 'todos', avalBusca: '' },
-    f2: { competencia: mesAnterior(), reports: {}, res: null, unidade: '', bloco: 'PAGANTE', aval: {}, fluxo: fluxoNovo(), envPor: 'Master Project', envObs: '', valPor: 'Raquel', valObs: '', valCheck: false, sel: '', avalFiltro: 'todos', avalBusca: '' },
+    f2: { competencia: mesAnterior(), reports: {}, res: null, unidade: '', bloco: 'SEMESTRES', aval: {}, fluxo: fluxoNovo(), envPor: 'Master Project', envObs: '', valPor: 'Raquel', valObs: '', valCheck: false, sel: '', avalFiltro: 'todos', avalBusca: '' },
     regras: { aba: 'regras', busca: '', edit: null },
     uploadAlvo: 'f1',
     usuarios: { nome: '', email: '', papel: 'executora' },
@@ -117,7 +117,7 @@
     if (!mesma) {
       s.sel = ''; s.avalBusca = ''; s.avalFiltro = c.status === 'em_aprovacao' && contagemAval(fr).nao ? 'nao' : 'todos';
       if (fr === 'f1') { s.filtro = 'todas'; s.filial = ''; s.dia = ''; s.busca = ''; }
-      if (fr === 'f2' && s.res && s.res.unidades && s.res.unidades[0]) { s.unidade = s.res.unidades[0].unidade; s.bloco = 'PAGANTE'; }
+      if (fr === 'f2' && s.res && s.res.unidades && s.res.unidades[0]) { s.unidade = s.res.unidades[0].unidade; s.bloco = 'SEMESTRES'; }
     }
     Object.entries(c.arquivos || {}).forEach(([t, m]) => { if (!s.reports[t] || !s.reports[t].rows) s.reports[t] = m; });
   }
@@ -646,6 +646,7 @@
     html += cardUpload(1, 'Bases do mês', s, soExecutora(upInner), `${F2_ARQS.filter(([t]) => s.reports[t]).length} bases · ${compBR(s.competencia)}${s.conf ? ' · processado por ' + esc(s.conf.criado_por) + ' em ' + esc(s.conf.criado_em) : ''}`);
 
     if (!s.res) return html;
+    FAT.resumo.completar(s.res);
     const r = s.res, T = FAT.resumo.T, tg = r.totalGeral;
     const difs = r.unidades.filter((u) => Math.abs(u.check.difFaturamento) > 0.05 || u.check.difAlunos !== 0);
     const ex = r.excecoes;
@@ -660,25 +661,25 @@
       ${difs.length ? `<div class="alert bad"><div><b>Diferença entre resumo e razão/BI.</b>${difs.map((u) => esc(u.unidade)).join(', ')}. Veja o check abaixo e as exceções.</div></div>`
         : '<div class="alert ok"><div><b>Check fechado.</b>O faturamento de cada unidade bate com o razão e a quantidade de alunos bate com o BI.</div></div>'}
       <div class="card-head" style="margin:16px 0 10px"><h3 style="margin:0">Consolidado</h3></div>
-      <div class="tbl-wrap"><table><thead><tr><th>Unidade</th>${avalHead(s)}<th class="num">Qtd alunos</th><th class="num">Ticket médio</th>${r.topicos.map((t) => `<th class="num">${esc(t)}</th>`).join('')}</tr></thead><tbody>
-      ${[...r.consolidado, tg].map((c, i, a) => { const tot = i === a.length - 1; return `<tr class="${tot ? 'total' : classeAval('f2', 'u:' + c.unidade)}"><td>${esc(c.unidade)}</td>${tot ? (mostraAval(s) ? '<td></td><td></td>' : '') : avalCells('f2', 'u:' + c.unidade)}<td class="num">${int(c.qtd)}</td><td class="num">${n2(c.ticket)}</td>${r.topicos.map((t) => `<td class="num">${n2(c[t])}</td>`).join('')}</tr>`; }).join('')}
+      <div class="tbl-wrap"><table><thead><tr><th>Unidade</th>${avalHead(s)}<th class="num">Qtd alunos</th><th class="num">Ticket médio</th><th class="num">Ticket médio líquido</th>${r.topicos.map((t) => `<th class="num">${esc(t)}</th>`).join('')}</tr></thead><tbody>
+      ${[...r.consolidado, tg].map((c, i, a) => { const tot = i === a.length - 1; return `<tr class="${tot ? 'total' : classeAval('f2', 'u:' + c.unidade)}"><td>${esc(c.unidade)}</td>${tot ? (mostraAval(s) ? '<td></td><td></td>' : '') : avalCells('f2', 'u:' + c.unidade)}<td class="num">${int(c.qtd)}</td><td class="num">${n2(c.ticket)}</td><td class="num">${n2(c.ticketLiquido)}</td>${r.topicos.map((t) => `<td class="num">${n2(c[t])}</td>`).join('')}</tr>`; }).join('')}
       </tbody></table></div>
       <p class="small muted" style="margin-top:8px">Valores com o sinal do razão (receita negativa, deduções positivas), igual à planilha do resumo.</p></div>`;
 
     // Detalhe por unidade
     const un = r.unidades.find((u) => u.unidade === s.unidade) || r.unidades[0];
     const bl = s.bloco;
-    const linhas = bl === 'TOTAL' ? null : un.blocos[bl];
+    const linhas = bl === 'TOTAL' || bl === 'SEMESTRES' ? null : un.blocos[bl];
     html += `<div class="card"><div class="card-head"><h2>Detalhe por unidade</h2>
       <label class="fld" style="flex-direction:row;align-items:center;gap:8px">Unidade<select data-bind="f2.unidade">${r.unidades.map((u) => `<option ${u.unidade === un.unidade ? 'selected' : ''}>${esc(u.unidade)}</option>`).join('')}</select></label></div>
       <p class="small muted" style="margin-bottom:12px">${esc(un.razaoSocial)} · filial ${esc(un.filial)} · BI "${esc(un.unidadeBI)}" · ISS ${n2(un.iss * 100)}% · PDD ${n2(un.pdd * 100)}%</p>
-      <div class="tabs" role="tablist">${['PAGANTE', 'PROUNI', 'FIES', 'TOTAL'].map((b) => `<button type="button" role="tab" aria-selected="${bl === b}" class="${bl === b ? 'on' : ''}" data-action="f2-bloco" data-v="${b}">${b === 'TOTAL' ? 'Total por tipo' : b === 'PROUNI' ? 'ProUni' : b.charAt(0) + b.slice(1).toLowerCase()}</button>`).join('')}</div>
-      <div class="tbl-wrap"><table><thead><tr><th>${linhas ? 'Semestre' : 'Tipo de aluno'}</th><th class="num">Qtd</th><th class="num">Ticket médio</th>${r.topicos.map((t) => `<th class="num">${esc(t)}</th>`).join('')}${linhas ? '<th class="num">Ticket líquido</th>' : ''}</tr></thead><tbody>
+      <div class="tabs" role="tablist">${['SEMESTRES', 'PAGANTE', 'PROUNI', 'FIES', 'TOTAL'].map((b) => `<button type="button" role="tab" aria-selected="${bl === b}" class="${bl === b ? 'on' : ''}" data-action="f2-bloco" data-v="${b}">${b === 'SEMESTRES' ? 'Resumo por semestre' : b === 'TOTAL' ? 'Total por tipo' : b === 'PROUNI' ? 'ProUni' : b.charAt(0) + b.slice(1).toLowerCase()}</button>`).join('')}</div>
+      ${bl === 'SEMESTRES' ? tabelaSemestres(un) : `<div class="tbl-wrap"><table><thead><tr><th>${linhas ? 'Semestre' : 'Tipo de aluno'}</th><th class="num">Qtd</th><th class="num">Ticket médio</th>${r.topicos.map((t) => `<th class="num">${esc(t)}</th>`).join('')}<th class="num">Ticket médio líquido</th></tr></thead><tbody>
       ${linhas ? linhas.map((l) => `<tr><td>${esc(l.serie)}º</td><td class="num">${int(l.qtd)}</td><td class="num">${n2(l.ticket)}</td>${r.topicos.map((t) => `<td class="num">${n2(l.valores[t])}</td>`).join('')}<td class="num">${n2(l.ticketLiquido)}</td></tr>`).join('') +
-        `<tr class="total"><td>Total</td><td class="num">${int(un.totalBloco[bl].qtd)}</td><td class="num">${n2(un.totalBloco[bl].ticket)}</td>${r.topicos.map((t) => `<td class="num">${n2(un.totalBloco[bl].valores[t])}</td>`).join('')}<td></td></tr>`
-        : FAT.resumo.TIPOS_ALUNO.map((t) => `<tr><td>${esc(t)}</td><td class="num">${int(un.totalBloco[t].qtd)}</td><td class="num">${n2(un.totalBloco[t].ticket)}</td>${r.topicos.map((k) => `<td class="num">${n2(un.totalBloco[t].valores[k])}</td>`).join('')}</tr>`).join('') +
-        `<tr class="total"><td>Total da unidade</td><td class="num">${int(un.total.qtd)}</td><td class="num">${n2(un.total.ticket)}</td>${r.topicos.map((k) => `<td class="num">${n2(un.total.valores[k])}</td>`).join('')}</tr>`}
-      </tbody></table></div></div>`;
+        `<tr class="total"><td>Total</td><td class="num">${int(un.totalBloco[bl].qtd)}</td><td class="num">${n2(un.totalBloco[bl].ticket)}</td>${r.topicos.map((t) => `<td class="num">${n2(un.totalBloco[bl].valores[t])}</td>`).join('')}<td class="num">${n2(un.totalBloco[bl].ticketLiquido)}</td></tr>`
+        : FAT.resumo.TIPOS_ALUNO.map((t) => `<tr><td>${esc(t)}</td><td class="num">${int(un.totalBloco[t].qtd)}</td><td class="num">${n2(un.totalBloco[t].ticket)}</td>${r.topicos.map((k) => `<td class="num">${n2(un.totalBloco[t].valores[k])}</td>`).join('')}<td class="num">${n2(un.totalBloco[t].ticketLiquido)}</td></tr>`).join('') +
+        `<tr class="total"><td>Total da unidade</td><td class="num">${int(un.total.qtd)}</td><td class="num">${n2(un.total.ticket)}</td>${r.topicos.map((k) => `<td class="num">${n2(un.total.valores[k])}</td>`).join('')}<td class="num">${n2(un.total.ticketLiquido)}</td></tr>`}
+      </tbody></table></div>`}</div>`;
 
     // Check + exceções
     html += `<div class="card"><div class="card-head"><h2>Check e exceções</h2></div>
@@ -692,6 +693,17 @@
 
     html += cardFluxo('f2', s, [['f2-export', 'Resumo completo (Excel)']], 'Confira o consolidado, o check e as exceções e envie para aprovação. A aprovadora confere e aprova ou devolve. Depois da aprovação o portal entrega o relatório final e o Excel com uma aba por unidade.');
     return html;
+  }
+
+  // Quadro das abas de unidade da planilha: alunos, ticket e receita, bruto e líquido, por semestre.
+  function tabelaSemestres(un) {
+    const rs = un.resumoSemestre, t = rs.total, d = rs.dif;
+    const temDif = d.alunos !== 0 || Math.abs(d.receitaBruta) > 0.05 || Math.abs(d.receitaLiquida) > 0.05;
+    return `<div class="tbl-wrap"><table><thead><tr><th>Semestre</th><th class="num">Total alunos</th><th class="num">Ticket bruto</th><th class="num">Receita bruta</th><th class="num">Ticket líquido</th><th class="num">Receita líquida</th></tr></thead><tbody>
+      ${rs.linhas.map((l) => `<tr><td>${esc(l.serie)}º</td><td class="num">${int(l.qtd)}</td><td class="num">${n2(l.ticketBruto)}</td><td class="num">${n2(l.receitaBruta)}</td><td class="num">${n2(l.ticketLiquido)}</td><td class="num">${n2(l.receitaLiquida)}</td></tr>`).join('')}
+      <tr class="total"><td>Total</td><td class="num">${int(t.qtd)}</td><td class="num">${n2(t.ticketBruto)}</td><td class="num">${n2(t.receitaBruta)}</td><td class="num">${n2(t.ticketLiquido)}</td><td class="num">${n2(t.receitaLiquida)}</td></tr>
+      </tbody></table></div>
+      <p class="small ${temDif ? '' : 'muted'}" style="margin-top:8px;${temDif ? 'color:var(--warn)' : ''}">${temDif ? `Conferência com o total da unidade: alunos ${int(d.alunos)} · receita bruta ${n2(d.receitaBruta)} · receita líquida ${n2(d.receitaLiquida)}. Diferença vem de receita em semestre sem aluno no BI.` : 'Conferência com o total da unidade: alunos, receita bruta e receita líquida batem.'} Ticket = receita ÷ total de alunos. Receita líquida = soma de todos os tópicos (faturamento, deduções, impostos e PDD), em valor positivo como na planilha.</p>`;
   }
 
   // ======================================================== FRENTE 3
@@ -890,7 +902,7 @@
     overlay('Montando o resumo de tópicos...'); await pausa();
     try {
       s.res = FAT.resumo.run({ razao: s.reports.razao.rows, baseAlunos: s.reports.baseAlunos.rows, alunosLyceum: s.reports.alunosLyceum ? s.reports.alunosLyceum.rows : [], config });
-      s.unidade = s.res.unidades[0].unidade; s.bloco = 'PAGANTE'; s.aval = {}; s.sel = ''; s.avalFiltro = 'todos'; s.avalBusca = ''; s.fluxo = fluxoNovo(); s.valCheck = false; s.valObs = '';
+      s.unidade = s.res.unidades[0].unidade; s.bloco = 'SEMESTRES'; s.aval = {}; s.sel = ''; s.avalFiltro = 'todos'; s.avalBusca = ''; s.fluxo = fluxoNovo(); s.valCheck = false; s.valObs = '';
     } catch (e) { console.error(e); toast('Erro ao processar: ' + e.message); }
     if (R.ativo && s.res) await gravarConferencia('f2', F2_ARQS);
     overlay(null); render();
@@ -908,7 +920,7 @@
   function gerarRelatorio(fr) {
     const s = state[fr];
     const ctx = { competencia: s.competencia, fluxo: s.fluxo, decisoes: s.decisoes, aval: s.aval, avalItens: itensAval(fr), config };
-    return fr === 'f1' ? FAT.relatorio.conferencia(s.res, ctx) : FAT.relatorio.resumo(s.res, ctx);
+    return fr === 'f1' ? FAT.relatorio.conferencia(s.res, ctx) : FAT.relatorio.resumo(FAT.resumo.completar(s.res), ctx);
   }
   const nomeRelatorio = (fr) => (fr === 'f1' ? `Relatorio_Conferencia_${state.f1.rotina}_${state.f1.competencia}.html` : `Relatorio_Resumo_de_Topicos_${state.f2.competencia}.html`);
   function registrar(fr, status, por, obs, extra) {
@@ -1046,7 +1058,7 @@
       case 'f2-processar': processarF2(); break;
       case 'f2-limpar': f2.reports = {}; if (!R.ativo) f2.res = null; render(); break;
       case 'f2-bloco': f2.bloco = el.dataset.v; render(); break;
-      case 'f2-export': FAT.exportar.resumo(f2.res, { competencia: f2.competencia, validadoPor: f2.fluxo.aprovacao && f2.fluxo.aprovacao.por, validadoEm: f2.fluxo.aprovacao && f2.fluxo.aprovacao.em, aval: f2.aval, avalItens: itensAval('f2') }); break;
+      case 'f2-export': FAT.exportar.resumo(FAT.resumo.completar(f2.res), { competencia: f2.competencia, validadoPor: f2.fluxo.aprovacao && f2.fluxo.aprovacao.por, validadoEm: f2.fluxo.aprovacao && f2.fluxo.aprovacao.em, aval: f2.aval, avalItens: itensAval('f2') }); break;
       case 'cfg-aba': rg.aba = el.dataset.v; rg.edit = null; render(); break;
       case 'cfg-exportar': baixarJSON(config, 'parametros-portal-fat.json'); break;
       case 'cfg-importar': $json.value = ''; $json.click(); break;
