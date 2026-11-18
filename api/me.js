@@ -6,7 +6,7 @@ const { usuario } = require('./_lib/auth');
 module.exports = rota({
   GET: async (req) => {
     const u = await usuario(req, null, { permitirTroca: true });
-    const ap = await q("SELECT DISTINCT nome FROM usuarios WHERE ativo = 1 AND papel = 'aprovadora' ORDER BY nome");
+    const ap = await q("SELECT DISTINCT nome FROM usuarios WHERE ativo = 1 AND papel IN ('aprovadora', 'ambos', 'admin') ORDER BY nome");
     return { usuario: { id: u.id, nome: u.nome, email: u.email, papel: u.papel, trocar_senha: u.trocar_senha }, aprovadoras: ap.map((x) => x.nome) };
   },
 });

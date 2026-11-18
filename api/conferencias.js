@@ -6,8 +6,8 @@
 const crypto = require('crypto');
 const { rota, corpo, query, Erro } = require('./_lib/http');
 const { q, um, tx } = require('./_lib/db');
-const { usuario } = require('./_lib/auth');
-const { paraTela, json, SELECT_CONF, itensAval } = require('./_lib/conf');
+const { usuario, pode } = require('./_lib/auth');
+const { paraTela, json, SELECT_CONF, itensAval, exigeAprovadorDiferente } = require('./_lib/conf');
 
 const FRENTES = ['f1', 'f2'];
 const LIMITE = 3.5 * 1024 * 1024;
@@ -83,7 +83,7 @@ module.exports = rota({
       if (!c) throw new Erro(404, 'Conferência não encontrada.');
       const sets = [], vals = [];
       if (b.decisoes) {
-        if (!['admin', 'executora'].includes(u.papel)) throw new Erro(403, 'Só a executora registra as decisões.');
+        if (!pode(u, 'executora')) throw new Erro(403, 'Seu perfil não registra decisões.');
         if (!['rascunho', 'devolvido'].includes(c.status)) throw new Erro(409, 'As decisões ficam travadas enquanto a conferência está com a aprovadora ou depois de aprovada.');
         const d = mesclar(json(c.decisoes, {}), b.decisoes, (v) => {
           const dec = texto(v.decisao, 40);
@@ -93,10 +93,10 @@ module.exports = rota({
         sets.push('decisoes = ?'); vals.push(JSON.stringify(d));
       }
       if (b.aval) {
-        if (!['admin', 'aprovadora'].includes(u.papel)) throw new Erro(403, 'Só a aprovadora dá o aval.');
+        if (!pode(u, 'aprovadora')) throw new Erro(403, 'Seu perfil não dá aval.');
         if (c.status !== 'em_aprovacao') throw new Erro(409, 'O aval só pode ser dado enquanto a conferência está em aprovação.');
         const env = (json(c.fluxo, {}).envio || {});
-        if (u.papel !== 'admin' && env.usuario_id === u.id) throw new Erro(403, 'Quem enviou a conferência não pode dar o aval nela.');
+        if (u.papel !== 'admin' && env.usuario_id === u.id && (await exigeAprovadorDiferente(t))) throw new Erro(403, 'Pelos parâmetros, quem enviou a conferência não pode dar o aval nela.');
         const a = mesclar(json(c.aval, {}), b.aval, (v) => {
           const ok = texto(v.ok, 3);
           if (!['', 'sim', 'nao'].includes(ok)) throw new Erro(400, 'Aval inválido.');

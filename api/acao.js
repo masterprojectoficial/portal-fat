@@ -2,8 +2,8 @@
 // O servidor confere o perfil, a situação e o aval de cada item antes de mudar o fluxo.
 const { rota, corpo, Erro, agoraBR } = require('./_lib/http');
 const { um, tx } = require('./_lib/db');
-const { usuario } = require('./_lib/auth');
-const { json, contagemAval, resultadoTexto, paraTela, SELECT_CONF, NOME_FRENTE } = require('./_lib/conf');
+const { usuario, pode } = require('./_lib/auth');
+const { exigeAprovadorDiferente, json, contagemAval, resultadoTexto, paraTela, SELECT_CONF, NOME_FRENTE } = require('./_lib/conf');
 
 const texto = (s, max) => String(s == null ? '' : s).trim().slice(0, max);
 
@@ -27,7 +27,7 @@ module.exports = rota({
         [c.id, NOME_FRENTE[c.frente], c.rotina, c.competencia, status, u.nome, u.id, resultadoTexto(c.frente, res, json(c.decisoes, {})), obs || '']);
 
       if (acao === 'enviar') {
-        if (!['admin', 'executora'].includes(u.papel)) throw new Erro(403, 'Só a executora envia para aprovação.');
+        if (!pode(u, 'executora')) throw new Erro(403, 'Seu perfil não envia para aprovação.');
         if (!['rascunho', 'devolvido'].includes(c.status)) throw new Erro(409, 'Esta conferência já foi enviada.');
         const aprovador = texto(b.aprovador, 120);
         if (!aprovador) throw new Erro(400, 'Escolha com quem fica a aprovação.');
@@ -38,9 +38,9 @@ module.exports = rota({
       }
 
       // devolver e aprovar
-      if (!['admin', 'aprovadora'].includes(u.papel)) throw new Erro(403, 'Só a aprovadora aprova ou devolve.');
+      if (!pode(u, 'aprovadora')) throw new Erro(403, 'Seu perfil não aprova nem devolve.');
       if (c.status !== 'em_aprovacao') throw new Erro(409, 'Esta conferência não está aguardando aprovação.');
-      if (u.papel !== 'admin' && f.envio && f.envio.usuario_id === u.id) throw new Erro(403, 'Quem enviou a conferência não pode aprovar nem devolver.');
+      if (u.papel !== 'admin' && f.envio && f.envio.usuario_id === u.id && (await exigeAprovadorDiferente(t))) throw new Erro(403, 'Pelos parâmetros, quem enviou a conferência não pode aprovar nem devolver.');
       const cont = contagemAval(c.frente, res, aval);
       const obs = texto(b.obs, 1000);
 

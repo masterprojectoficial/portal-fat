@@ -35,9 +35,25 @@ Na versão compartilhada a fila é a mesma para todo mundo, e o botão "Atualiza
 
 ## Perfis (versão compartilhada)
 
-- **Executora:** sobe os relatórios, processa, registra as decisões, envia para aprovação e altera os parâmetros.
-- **Aprovadora:** dá o aval item a item e aprova ou devolve. Quem enviou uma conferência não pode aprovar essa mesma conferência.
+- **Executa e aprova (padrão):** faz o fluxo inteiro: sobe, confere, envia, dá o aval e aprova, inclusive a própria conferência. O histórico registra quem enviou e quem aprovou.
+- **Só executa** e **Só aprova:** limitam a pessoa a uma parte do fluxo.
 - **Administradora:** faz tudo e cadastra as pessoas na tela "Usuários". A senha temporária aparece uma vez e é trocada no primeiro acesso.
+- Em "Usuários > Aprovação", a administradora pode exigir que a aprovação seja feita por outra pessoa. Com isso ligado, quem envia não aprova a própria conferência.
+
+## Checklist da conferência
+
+No topo de cada frente há o checklist das etapas, com quem faz e a situação de cada uma: arquivos, pré-análise ou check, decisões, envio, aval, aprovação e resultado final. O botão "Ver" leva até a seção. Ao lado, o quadro "O que fazer agora" diz o próximo passo de quem está logado.
+
+## Regras de semestre (Frente 2)
+
+Ficam em "Regras e parâmetros > Ajustes de aluno":
+- **Regra automática:** semestre sem aluno não fica com valor. O valor vai para o próximo semestre com aluno do mesmo tipo e, se não houver próximo, para o anterior. Pode ser desligada.
+- **Ajustes manuais:** para casos pontuais, por lançamento (RA, lote/doc/linha, conta e valor) ou para todos os lançamentos de um RA. O motivo é obrigatório. O ajuste pode ficar "para revisar", "ativo" ou "revogado".
+- **Importar ajustes de uma planilha do resumo:** lê a aba Razão e traz para revisão só os lançamentos digitados à mão que a regra automática não explica.
+
+Na planilha de set/26 eram 68 lançamentos digitados à mão: 41 a regra automática cobre e 21 viram ajustes. Os outros 6 não mudam o resultado. Com isso, todos os semestres batem com a planilha, menos Pouso Alegre MED, por causa do CF.
+
+As regras aplicadas aparecem no resumo ("Regras de semestre aplicadas"), no aval de cada unidade e no relatório final.
 
 Enquanto uma frente está com a aprovadora, ninguém reprocessa nem muda as decisões dela. Se a conferência for devolvida e a executora processar de novo a mesma competência, a nova conferência mantém o trâmite e o aval dos itens que continuam.
 

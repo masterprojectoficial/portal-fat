@@ -110,6 +110,7 @@
         conta: String(r[c['CONTA']] ?? '').trim(),
         data: toISODate(r[c['DATA']]),
         lote: String(r[c['LOTE/SUB/DOC/LINHA']] ?? '').slice(0, 6),
+        doc: String(r[c['LOTE/SUB/DOC/LINHA']] ?? '').trim(),
         historico: String(r[c['HISTORICO']] ?? ''),
         filial: pad(r[c['FILIAL DE ORIGEM']], 6),
         cc: String(r[c['C CUSTO']] ?? '').trim(),

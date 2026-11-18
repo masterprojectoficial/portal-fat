@@ -30,6 +30,14 @@
     const fallbackByRa = new Map();
     for (const a of alunosLyceum || []) if (a.ra && !fallbackByRa.has(a.ra)) fallbackByRa.set(a.ra, { tipo: tipoAluno(a.tipoAluno), serie: a.serie });
 
+    // Ajustes manuais registrados em Regras (no lugar de digitar na planilha): por lançamento ou por RA.
+    const ajustes = (config.ajustesAluno || []).filter((a) => a && a.ativo !== false && a.ra);
+    // Lançamento = RA + lote/doc/linha + conta + valor (o documento sozinho se repete entre contas).
+    const chaveLanc = (ra, doc, conta, mov) => [ra, doc, conta || '', mov == null || mov === '' ? '' : Number(mov).toFixed(2)].join('|');
+    const ajPorDoc = new Map(ajustes.filter((a) => a.doc).map((a) => [chaveLanc(a.ra, a.doc, a.conta, a.valor), a]));
+    const ajPorRa = new Map(ajustes.filter((a) => !a.doc).map((a) => [a.ra, a]));
+    const ajustesAplicados = [];
+
     function unidadeDe(filial, cc) {
       return unidades.find((u) => u.filial === filial && (u.ccRegra === 'diferente' ? cc !== ccMed : cc === ccMed)) || null;
     }
@@ -53,7 +61,13 @@
       const u = unidadeDe(rz.filial, rz.cc);
       if (!u) { excecoes.foraUnidade.push({ conta: rz.conta, topico, filial: rz.filial, cc: rz.cc, ra: rz.itemConta, data: rz.data, historico: rz.historico, movimento: rz.movimento }); continue; }
       if (topico === T.FAT) razaoFat[u.nome] += rz.movimento;
-      const al = alunoByRa.get(rz.itemConta) || fallbackByRa.get(rz.itemConta);
+      let al = alunoByRa.get(rz.itemConta) || fallbackByRa.get(rz.itemConta);
+      const aj = ajPorDoc.get(chaveLanc(rz.itemConta, rz.doc, rz.conta, rz.movimento)) || ajPorRa.get(rz.itemConta);
+      if (aj) {
+        const de = al ? { tipo: al.tipo, serie: al.serie } : { tipo: '', serie: '' };
+        al = { tipo: aj.tipo ? tipoAluno(aj.tipo) : de.tipo, serie: aj.serie ? +aj.serie : de.serie };
+        ajustesAplicados.push({ id: aj.id, ra: rz.itemConta, doc: rz.doc, unidade: u.nome, topico, deTipo: de.tipo, deSerie: de.serie, paraTipo: al.tipo, paraSerie: al.serie, movimento: rz.movimento, motivo: aj.motivo || '' });
+      }
       if (!al || !al.tipo) {
         excecoes.semAluno.push({ unidade: u.nome, conta: rz.conta, topico, ra: rz.itemConta, data: rz.data, historico: rz.historico, movimento: rz.movimento });
         continue;
@@ -86,6 +100,28 @@
       if (!u || !t) continue;
       qtd[u.nome][t][a.serie] = (qtd[u.nome][t][a.serie] || 0) + 1;
       alunosBI[u.nome]++;
+    }
+
+    // Regra da Raquel: semestre sem aluno não pode ter valor. O valor vai para o próximo semestre com aluno do mesmo
+    // tipo (não havendo próximo, para o anterior com aluno). Parâmetro regraSemestreSemAluno: 'proximo' (padrão) ou 'desligada'.
+    const realocacoes = [];
+    if ((config.regraSemestreSemAluno || 'proximo') !== 'desligada') {
+      unidades.forEach((u) => TIPOS_ALUNO.forEach((t) => {
+        const bl = acc[u.nome][t], q = qtd[u.nome][t];
+        const comAluno = Object.keys(q).map(Number).filter((s) => q[s] > 0).sort((a, b) => a - b);
+        if (!comAluno.length) return;
+        Object.keys(bl).map(Number).sort((a, b) => a - b).forEach((s) => {
+          if (q[s] > 0) return;
+          const v = bl[s];
+          if (!topicos.some((k) => Math.abs(v[k] || 0) > 0.004)) return;
+          const para = comAluno.find((x) => x > s) ?? [...comAluno].reverse().find((x) => x < s);
+          if (para == null) return;
+          bl[para] = bl[para] || zero(topicos);
+          topicos.forEach((k) => { bl[para][k] += v[k] || 0; });
+          realocacoes.push({ unidade: u.nome, tipo: t, de: s, para, valor: topicos.reduce((a, k) => a + (v[k] || 0), 0), faturamento: v[T.FAT] || 0 });
+          delete bl[s];
+        });
+      }));
     }
 
     const resultado = unidades.map((u) => {
@@ -145,7 +181,7 @@
     totalGeral.ticket = totalGeral.qtd ? totalGeral[T.FAT] / totalGeral.qtd : 0;
     totalGeral.ticketLiquido = totalGeral.qtd ? topicos.reduce((a, k) => a + totalGeral[k], 0) / totalGeral.qtd : 0;
 
-    return { topicos, unidades: resultado, consolidado, totalGeral, excecoes };
+    return { topicos, unidades: resultado, consolidado, totalGeral, excecoes, realocacoes, ajustesAplicados };
   }
 
   // Quadro "SEMESTRE / Total Alunos / Ticket Bruto / Receita Bruta / Ticket Líquido / Receita Líquida" das abas de unidade:

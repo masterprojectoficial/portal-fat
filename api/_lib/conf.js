@@ -52,6 +52,12 @@ function paraTela(r) {
   };
 }
 
+// Parâmetro exigirAprovadorDiferente (padrão: desligado): quando ligado, quem envia não aprova a própria conferência.
+async function exigeAprovadorDiferente(t) {
+  const r = await t.um('SELECT config FROM parametros WHERE id = 1');
+  return !!(r && json(r.config, {}).exigirAprovadorDiferente);
+}
+
 const SELECT_CONF = `SELECT c.*, u.nome AS criado_por_nome FROM conferencias c LEFT JOIN usuarios u ON u.id = c.criado_por`;
 
-module.exports = { NOME_FRENTE, itensAval, contagemAval, resultadoTexto, paraTela, json, SELECT_CONF };
+module.exports = { exigeAprovadorDiferente, NOME_FRENTE, itensAval, contagemAval, resultadoTexto, paraTela, json, SELECT_CONF };

@@ -10,8 +10,11 @@
 
   // Perfis (no modo local tudo é liberado, como antes)
   const papel = () => (R.ativo ? R.me.papel : 'admin');
-  const podeExecutar = () => ['admin', 'executora'].includes(papel());
-  const podeAprovar = (s) => ['admin', 'aprovadora'].includes(papel()) && (!R.ativo || papel() === 'admin' || !s.fluxo.envio || s.fluxo.envio.usuario_id !== R.me.id);
+  const podeExecutar = () => ['admin', 'executora', 'ambos'].includes(papel());
+  // A mesma pessoa pode executar e aprovar; só fica separado se o parâmetro exigirAprovadorDiferente estiver ligado.
+  const separaFuncoes = () => !!config.exigirAprovadorDiferente;
+  const enviouEu = (s) => R.ativo && s.fluxo.envio && s.fluxo.envio.usuario_id === R.me.id;
+  const podeAprovar = (s) => ['admin', 'aprovadora', 'ambos'].includes(papel()) && (!R.ativo || papel() === 'admin' || !separaFuncoes() || !enviouEu(s));
   const podeDecidir = (s) => podeExecutar() && (s.fluxo.status === 'rascunho' || s.fluxo.status === 'devolvido');
   const roAbre = (ok) => (ok ? '' : '<fieldset class="ro" disabled>');
   const roFecha = (ok) => (ok ? '' : '</fieldset>');
@@ -41,9 +44,9 @@
     rota: 'inicio',
     f1: { rotina: 'Faturamento', competencia: mesAnterior(), reports: {}, res: null, filtro: 'todas', filial: '', dia: '', busca: '', decisoes: {}, aval: {}, fluxo: fluxoNovo(), envPor: 'Master Project', envObs: '', valPor: 'Raquel', valObs: '', valCheck: false, sel: '', avalFiltro: 'todos', avalBusca: '' },
     f2: { competencia: mesAnterior(), reports: {}, res: null, unidade: '', bloco: 'SEMESTRES', aval: {}, fluxo: fluxoNovo(), envPor: 'Master Project', envObs: '', valPor: 'Raquel', valObs: '', valCheck: false, sel: '', avalFiltro: 'todos', avalBusca: '' },
-    regras: { aba: 'regras', busca: '', edit: null },
+    regras: { aba: 'regras', busca: '', edit: null, ajFiltro: 'revisar', aj: { ra: '', doc: '', conta: '', valor: '', tipo: '', serie: '', motivo: '' } },
     uploadAlvo: 'f1',
-    usuarios: { nome: '', email: '', papel: 'executora' },
+    usuarios: { nome: '', email: '', papel: 'ambos' },
     filaVer: 'tudo',
   };
 
@@ -134,7 +137,7 @@
   }
   function montarUsuario() {
     const box = document.getElementById('userbox'); if (!box) return;
-    const PAP = { admin: 'administradora', executora: 'executora', aprovadora: 'aprovadora' };
+    const PAP = { admin: 'administradora', executora: 'executora', aprovadora: 'aprovadora', ambos: 'executa e aprova' };
     box.className = 'user';
     box.innerHTML = `<span class="salvo" id="salvoTxt" aria-live="polite"></span><span><b>${esc(R.me.nome)}</b> <span class="papel muted">· ${PAP[R.me.papel] || ''}</span></span><a href="#senha">Trocar senha</a><a href="#" data-sair>Sair</a>`;
     box.querySelector('[data-sair]').addEventListener('click', (e) => { e.preventDefault(); salvarPendentes().finally(R.sair); });
@@ -190,7 +193,7 @@
     if (!s.res || s.fluxo.status !== 'em_aprovacao') return '';
     if (podeAprovar(s)) return avalWs(fr) + decisaoBox(fr);
     const f = s.fluxo, c = contagemAval(fr);
-    const minha = R.ativo && f.envio && f.envio.usuario_id === R.me.id && papel() !== 'admin';
+    const minha = enviouEu(s) && separaFuncoes() && papel() !== 'admin';
     return `<div class="alert warn"><div><b>Com ${esc(s.valPor)} para aprovação desde ${esc(f.envio.em)}.</b>${minha ? 'Você enviou esta conferência, então o aval e a aprovação ficam com outra pessoa. ' : ''}Aval até agora: ${int(c.sim + c.nao)} de ${int(c.total)} itens. Se ela devolver para ajuste, volta para a fila da executora.</div></div>`;
   }
   function camposEnvio(fr, s) {
@@ -203,8 +206,8 @@
   }
 
   function cardUpload(n, titulo, s, inner, resumo) {
-    if (!s.res) return `<div class="card"><div class="card-head">${tituloEtapa(n, titulo)}</div>${inner}</div>`;
-    return `<details class="card fold"><summary>${tituloEtapa(n, titulo)}<span class="small muted grow">${resumo}</span><span class="tg">Trocar arquivos</span></summary><div class="fold-body">${inner}</div></details>`;
+    if (!s.res) return `<div class="card" id="sec-arquivos"><div class="card-head">${tituloEtapa(n, titulo)}</div>${inner}</div>`;
+    return `<details class="card fold" id="sec-arquivos"><summary>${tituloEtapa(n, titulo)}<span class="small muted grow">${resumo}</span><span class="tg">Trocar arquivos</span></summary><div class="fold-body">${inner}</div></details>`;
   }
 
   function listaArquivos(reports, exigidos) {
@@ -257,7 +260,7 @@
 
   // ======================================================== COMO FUNCIONA
   const FR_ATUAL = () => (state.rota === 'frente2' ? 'f2' : 'f1');
-  const NOME_PAPEL = { admin: 'administradora', executora: 'executora', aprovadora: 'aprovadora' };
+  const NOME_PAPEL = { admin: 'administradora', executora: 'executora', aprovadora: 'aprovadora', ambos: 'executa e aprova' };
 
   // O que a pessoa logada precisa fazer agora nesta frente.
   function passoAgora(fr) {
@@ -279,8 +282,50 @@
       : { vez: false, t: 'Devolvido para a executora', p: ['A conferência voltou para ajuste. Quando a executora reenviar, ela aparece na sua fila de trabalho, já filtrada nos itens em desacordo.'] };
     if (st === 'em_aprovacao') return aprov
       ? { vez: true, t: 'Dar o aval e decidir', p: [`No painel "Aval da aprovadora", avalie cada item: De acordo (tecla A) ou Não de acordo (tecla N). Use as setas para navegar. Ao marcar de acordo, o portal já vai para o próximo item.`, 'Em item com problema, marque Não de acordo e escreva a observação: ela volta junto com a devolução.', 'Em "Decisão final", marque a confirmação de que revisou e clique em "Aprovar". Se algum item estiver em desacordo, use "Devolver para ajuste".'] }
-      : { vez: false, t: `Com ${esc(quemAprova)} para aprovação`, p: [R.ativo && s.fluxo.envio && s.fluxo.envio.usuario_id === R.me.id && papel() !== 'admin' ? 'Você enviou esta conferência, então a aprovação fica com outra pessoa. Enquanto isso, as decisões ficam travadas.' : 'A aprovadora está dando o aval item a item. Se ela devolver, a conferência volta para a sua fila com os itens marcados.'] };
+      : { vez: false, t: `Com ${esc(quemAprova)} para aprovação`, p: [enviouEu(s) && separaFuncoes() && papel() !== 'admin' ? 'Você enviou esta conferência e os parâmetros pedem aprovação por outra pessoa. Enquanto isso, as decisões ficam travadas.' : 'A aprovadora está dando o aval item a item. Se ela devolver, a conferência volta para a sua fila com os itens marcados.'] };
     return { vez: true, t: 'Aprovado: pegar o resultado final', p: [`No fim da página, em "Resultado final", baixe o relatório em HTML (com o carimbo da aprovação) e o Excel${f1 ? ', e a lista de reprocessamento só com os dias e unidades pendentes' : ' com uma aba por unidade'}.`, 'O relatório também fica guardado no "Histórico de aprovações" para qualquer pessoa reabrir.', 'Para a próxima competência, é só subir os novos relatórios.'] };
+  }
+
+  // Checklist da conferência: cada etapa com quem faz, situação e atalho até a seção.
+  function itensChecklist(fr, pronto) {
+    const s = state[fr], st = s.fluxo.status, r = s.res, f1 = fr === 'f1';
+    const enviado = st === 'em_aprovacao' || st === 'aprovado', aprovado = st === 'aprovado';
+    const itens = [];
+    const arqs = (f1 ? F1_ARQS : F2_ARQS.filter((a) => !a[2])).filter(([t]) => s.reports[t]).length, totArqs = f1 ? 3 : 2;
+    itens.push({ t: f1 ? 'Relatórios recebidos' : 'Bases recebidas', quem: 'Executa', det: r ? `${arqs || totArqs} de ${totArqs} · processado` : `${arqs} de ${totArqs}`, st: r ? 'ok' : pronto ? 'agora' : 'agora', alvo: 'sec-arquivos' });
+    if (f1) {
+      const semRegra = r ? r.semRegra.length : 0;
+      itens.push({ t: 'Pré-análise das regras', quem: 'Portal', det: !r ? 'depois do processamento' : semRegra ? `${semRegra} tipo(s) sem regra` : 'todos os tipos com regra', st: !r ? 'pend' : semRegra ? 'alerta' : 'ok', alvo: 'sec-pre' });
+      const pend = r ? r.kpis.pendentes : 0, dec = r ? r.pendencias.filter((p) => (s.decisoes[p.idOp] || {}).decisao).length : 0;
+      itens.push({ t: 'Decisão em cada pendência', quem: 'Executa', det: !r ? '-' : pend ? `${int(dec)} de ${int(pend)}` : 'nenhuma pendência', st: !r ? 'pend' : !pend || dec === pend ? 'ok' : enviado ? 'alerta' : 'agora', alvo: 'sec-pend' });
+    } else {
+      const difs = r ? r.unidades.filter((u) => Math.abs(u.check.difFaturamento) > 0.05 || u.check.difAlunos !== 0).length : 0;
+      itens.push({ t: 'Check razão e BI', quem: 'Portal', det: !r ? 'depois do processamento' : difs ? `${difs} unidade(s) com diferença` : `${r.unidades.length} de ${r.unidades.length} unidades batem`, st: !r ? 'pend' : difs ? 'alerta' : 'ok', alvo: 'sec-cons' });
+      const re = r ? (r.realocacoes || []).length : 0, aj = r ? (r.ajustesAplicados || []).length : 0;
+      itens.push({ t: 'Regras de semestre', quem: 'Portal', det: !r ? '-' : re || aj ? `${re} realocação(ões) · ${aj} ajuste(s)` : 'nenhuma aplicada', st: !r ? 'pend' : 'ok', alvo: 'sec-regras' });
+    }
+    itens.push({ t: st === 'devolvido' ? 'Ajustar e reenviar' : 'Enviar para aprovação', quem: 'Executa', det: st === 'devolvido' ? 'devolvido: ver o motivo' : enviado ? `por ${s.fluxo.envio.por}` : r ? `para ${s.valPor || 'a aprovação'}` : '-', st: enviado ? 'ok' : st === 'devolvido' ? 'volta' : r ? 'agora' : 'pend', alvo: st === 'em_aprovacao' ? 'decisao-' + fr : 'sec-aprov' });
+    const c = r ? contagemAval(fr) : { total: 0, sim: 0, nao: 0 };
+    itens.push({ t: 'Aval item a item', quem: 'Aprova', det: !r ? '-' : `${int(c.sim + c.nao)} de ${int(c.total)}${c.nao ? ` · ${c.nao} não de acordo` : ''}`, st: aprovado ? 'ok' : st === 'em_aprovacao' ? (c.nao ? 'alerta' : 'agora') : 'pend', alvo: st === 'em_aprovacao' ? 'avalws-' + fr : 'sec-aprov' });
+    itens.push({ t: 'Aprovar a conferência', quem: 'Aprova', det: aprovado ? `por ${s.fluxo.aprovacao.por}` : st === 'em_aprovacao' ? (c.sem ? `faltam ${c.sem} sem aval` : c.nao ? 'devolver os itens em desacordo' : 'pronto para aprovar') : '-', st: aprovado ? 'ok' : st === 'em_aprovacao' && !c.sem && !c.nao ? 'agora' : 'pend', alvo: st === 'em_aprovacao' ? 'decisao-' + fr : 'sec-aprov' });
+    itens.push({ t: 'Relatório final e Excel', quem: 'Todos', det: aprovado ? 'liberados para baixar' : 'depois da aprovação', st: aprovado ? 'ok' : 'pend', alvo: 'sec-final' });
+    return itens;
+  }
+
+  function painelFluxo(fr, pronto) {
+    const itens = itensChecklist(fr, pronto), g = passoAgora(fr);
+    const feitos = itens.filter((i) => i.st === 'ok').length;
+    const prox = itens.find((i) => i.st === 'agora' || i.st === 'volta' || i.st === 'alerta');
+    const ic = { ok: '✓', agora: '•', volta: '↺', alerta: '!', pend: '' };
+    return `<section class="fluxo" aria-label="Checklist da conferência">
+      <div class="fluxo-h"><div><div class="fluxo-k">Checklist da conferência</div><b>${feitos} de ${itens.length} etapas concluídas</b></div><div class="fluxo-bar" aria-hidden="true"><i style="width:${(feitos / itens.length) * 100}%"></i></div></div>
+      <div class="fluxo-body">
+        <ol class="chk">${itens.map((i, n) => `<li class="chk-${i.st}"><span class="chk-ic">${ic[i.st] || n + 1}</span><span class="chk-tx"><b>${esc(i.t)}</b><small>${esc(i.quem)} · ${esc(i.det)}</small></span><button type="button" class="btn ghost sm" data-action="ir-secao" data-alvo="${i.alvo}" aria-label="Ver ${esc(i.t)}">Ver</button></li>`).join('')}</ol>
+        <div class="agora ${g.vez ? 'vez' : 'espera'}" style="margin:0"><div class="agora-h"><span class="pill ${g.vez ? 'info' : 'mute'}">${g.vez ? (R.ativo ? 'Sua vez' : 'Próximo passo') : 'Aguardando'}</span><b>${g.t}</b></div>
+          <ol>${g.p.map((x) => `<li>${x}</li>`).join('')}</ol>
+          ${g.vez && prox ? `<button type="button" class="btn" style="margin-top:12px" data-action="ir-secao" data-alvo="${prox.alvo}">Ir para: ${esc(prox.t)}</button>` : ''}
+          <a href="#guia" class="small" style="display:inline-block;margin-top:10px;margin-left:${g.vez && prox ? '12px' : '0'}">Como funciona o fluxo</a></div>
+      </div></section>`;
   }
 
   function guiaAgora(fr) {
@@ -305,7 +350,7 @@
         <div class="card" style="margin:0"><div class="card-head"><h2>Administradora</h2></div><ul class="g-lista"><li>Faz tudo o que as outras fazem</li><li>Cadastra as pessoas e define o perfil</li><li>Gera nova senha temporária</li><li>Desativa quem sai do processo</li></ul></div>
       </div>
       <div class="card"><div class="card-head"><h2>Regras que o portal garante</h2></div><ul class="g-lista">
-        <li>Quem envia uma conferência não aprova essa mesma conferência.</li>
+        <li>A mesma pessoa pode executar e aprovar. Se a administradora ligar "aprovação por outra pessoa" em Usuários, quem envia não aprova a própria conferência.</li>
         <li>Enquanto a frente está com a aprovadora, ninguém reprocessa nem muda as decisões.</li>
         <li>Aprovação só com todos os itens de acordo e com a confirmação marcada. Devolução precisa de item em desacordo ou de um parecer.</li>
         <li>O relatório final só é liberado depois da aprovação e não pode ser trocado depois.</li>
@@ -328,7 +373,7 @@
     const tabelasNoArquivo = s.reports.tipoOperacao || s.reports.regra;
     let html = cabecalho('Frente 1', 'Conferência da Integração',
       'Confere se tudo que foi gerado no Lyceum subiu para o Protheus e entrou no razão. O "verde" da integração não basta: só o cruzamento com o razão confirma.',
-      `<div>${pillFluxo(s)}</div>`) + etapas(s, pronto) + guiaAgora(FR_ATUAL());
+      `<div>${pillFluxo(s)}</div>`) + painelFluxo(FR_ATUAL(), pronto);
 
     html += blocoAprovacao('f1');
     const upInner = `<div class="row" style="margin-bottom:16px">
@@ -355,7 +400,7 @@
     const r = s.res, k = r.kpis;
 
     // Pré-análise
-    html += `<div class="card"><div class="card-head">${tituloEtapa(2, 'Pré-análise das regras')}</div>` +
+    html += `<div class="card" id="sec-pre"><div class="card-head">${tituloEtapa(2, 'Pré-análise das regras')}</div>` +
       (r.semRegra.length ? `<div class="alert warn"><div><b>${r.semRegra.length} tipo(s) de operação do Lyceum sem regra cadastrada.</b>Essas operações cairiam na conta lixo e não sobem para o Protheus. Avaliar a criação de regra no Agiros.</div></div>
         <div class="tbl-wrap"><table><thead><tr><th>Tipo</th><th>Nome</th><th class="num">Operações</th><th class="num">Valor</th></tr></thead><tbody>${r.semRegra.map((x) => `<tr><td>${esc(x.tipoOp)}</td><td>${esc(x.nome)}</td><td class="num">${int(x.qtd)}</td><td class="num">${brl(x.valor)}</td></tr>`).join('')}</tbody></table></div>`
         : `<div class="alert ok"><div><b>Todos os tipos de operação do Lyceum têm regra cadastrada.</b>Nenhuma operação vai para a conta lixo por falta de regra.</div></div>`) +
@@ -422,7 +467,7 @@
     const LIM = 300;
     const chips = [['todas', 'Todas', r.kpis.pendentes], ['nao_integrado', S.nao_integrado, r.kpis.nao_integrado], ['nao_contabilizado', S.nao_contabilizado, r.kpis.nao_contabilizado], ['erro', S.erro, r.kpis.erro]];
     const decididas = Object.values(s.decisoes).filter((d) => d.decisao).length;
-    return `<div class="card"><div class="card-head"><h2>Pendências</h2><div class="btns"><span class="small muted">${int(decididas)} de ${int(r.kpis.pendentes)} com decisão registrada</span></div></div>` +
+    return `<div class="card" id="sec-pend"><div class="card-head"><h2>Pendências</h2><div class="btns"><span class="small muted">${int(decididas)} de ${int(r.kpis.pendentes)} com decisão registrada</span></div></div>` +
       (r.pendencias.length ? `
       <div class="chips" style="margin-bottom:12px">${chips.map(([v, t, n]) => `<button type="button" class="chip ${s.filtro === v ? 'on' : ''}" data-action="f1-filtro" data-v="${v}">${esc(t)} · ${int(n)}</button>`).join('')}</div>
       <div class="row" style="margin-bottom:12px">
@@ -467,9 +512,24 @@
       const okF = !c || Math.abs(c.difFaturamento) <= 0.05, okA = !c || c.difAlunos === 0;
       return { key: 'u:' + u.unidade, grupo: 'Unidades do consolidado', label: 'Unidade ' + u.unidade, titulo: u.unidade,
         sub: `${int(u.qtd)} alunos · ticket ${n2(u.ticket)} · check ${okF && okA ? 'ok' : 'com diferença'}`,
-        campos: [['Qtd alunos', int(u.qtd)], ['Ticket médio', n2(u.ticket)], ...s.res.topicos.map((t) => [t, n2(u[t])]),
+        campos: [['Qtd alunos', int(u.qtd)], ['Ticket médio', n2(u.ticket)], ['Ticket médio líquido', n2(u.ticketLiquido)], ...regrasDaUnidade(s.res, u.unidade), ...s.res.topicos.map((t) => [t, n2(u[t])]),
           ...(c ? [['Faturamento resumo x razão', `${n2(c.faturamentoResumo)} x ${n2(c.faturamentoRazao)} (dif. ${n2(c.difFaturamento)})`, okF ? 0 : 1], ['Alunos resumo x BI', `${int(c.alunosResumo)} x ${int(c.alunosBI)} (dif. ${int(c.difAlunos)})`, okA ? 0 : 1]] : [])] };
     });
+  }
+  // Regras de semestre aplicadas numa unidade (automática e ajustes manuais), para o aval e as telas.
+  function regrasDaUnidade(res, unidade) {
+    const re = (res.realocacoes || []).filter((x) => x.unidade === unidade), aj = (res.ajustesAplicados || []).filter((x) => x.unidade === unidade);
+    const out = [];
+    if (re.length) out.push(['Semestre sem aluno realocado', `${int(re.length)} · ${re.map((x) => `${x.tipo.charAt(0) + x.tipo.slice(1).toLowerCase()} ${x.de}º → ${x.para}º`).slice(0, 4).join(', ')}${re.length > 4 ? '...' : ''}`, 1]);
+    if (aj.length) out.push(['Ajustes manuais aplicados', `${int(aj.length)} lançamento(s) · ${n2(aj.reduce((a, x) => a + x.movimento, 0))}`, 1]);
+    return out;
+  }
+  function cardRegrasAplicadas(r) {
+    const re = r.realocacoes || [], aj = r.ajustesAplicados || [];
+    if (!re.length && !aj.length) return `<div class="card" id="sec-regras"><div class="card-head"><h2>Regras de semestre aplicadas</h2><a class="btn ghost sm" href="#regras" data-action="ir-ajustes">Ver regras</a></div><p class="muted">Nenhuma: todo valor caiu em semestre com aluno e nenhum ajuste manual se aplicou.</p></div>`;
+    return `<div class="card" id="sec-regras"><div class="card-head"><h2>Regras de semestre aplicadas</h2><a class="btn ghost sm" href="#regras" data-action="ir-ajustes">Ver regras</a></div>
+      ${re.length ? `<h3 style="margin-bottom:8px">Semestre sem aluno → próximo semestre com aluno (${int(re.length)})</h3><div class="tbl-wrap" style="margin-bottom:14px"><table><thead><tr><th>Unidade</th><th>Tipo</th><th>De</th><th>Para</th><th class="num">Faturamento movido</th><th class="num">Total movido</th></tr></thead><tbody>${re.map((x) => `<tr><td>${esc(x.unidade)}</td><td>${esc(x.tipo)}</td><td>${esc(x.de)}º</td><td>${esc(x.para)}º</td><td class="num">${n2(x.faturamento)}</td><td class="num">${n2(x.valor)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+      ${aj.length ? `<h3 style="margin-bottom:8px">Ajustes manuais (${int(aj.length)})</h3><div class="tbl-wrap tbl-scroll"><table><thead><tr><th>Unidade</th><th>RA</th><th>Tópico</th><th>De</th><th>Para</th><th class="num">Valor</th><th>Motivo</th></tr></thead><tbody>${aj.map((x) => `<tr><td>${esc(x.unidade)}</td><td class="mono">${esc(x.ra)}</td><td class="small">${esc(x.topico)}</td><td>${esc(x.deTipo)} ${esc(x.deSerie)}º</td><td>${esc(x.paraTipo)} ${esc(x.paraSerie)}º</td><td class="num">${n2(x.movimento)}</td><td class="small">${esc(x.motivo)}</td></tr>`).join('')}</tbody></table></div>` : ''}</div>`;
   }
   function contagemAval(fr) {
     const s = state[fr], itens = itensAval(fr);
@@ -612,9 +672,9 @@
     } else if (st === 'aprovado') {
       corpo = `<div class="alert ok"><div><b>Aprovado por ${esc(f.aprovacao.por)} em ${esc(f.aprovacao.em)}.</b>${f.aprovacao.parecer ? esc(f.aprovacao.parecer) : 'Sem observações.'}</div></div><h3 style="margin:14px 0 6px">Aval da aprovadora</h3>${resumoAvalHTML(fr)}`;
     }
-    let html = st === 'em_aprovacao' ? '' : `<div class="card"><div class="card-head">${tituloEtapa(n, 'Aprovação')}${pill(STATUS_FLUXO[st][0], STATUS_FLUXO[st][1])}</div>${corpo}${tram}</div>`;
+    let html = st === 'em_aprovacao' ? '' : `<div class="card" id="sec-aprov"><div class="card-head">${tituloEtapa(n, 'Aprovação')}${pill(STATUS_FLUXO[st][0], STATUS_FLUXO[st][1])}</div>${corpo}${tram}</div>`;
     const ok = st === 'aprovado';
-    html += `<div class="card ${ok ? 'final' : ''}"><div class="card-head">${tituloEtapa(n + 1, 'Resultado final', ok)}</div>
+    html += `<div class="card ${ok ? 'final' : ''}" id="sec-final"><div class="card-head">${tituloEtapa(n + 1, 'Resultado final', ok)}</div>
       ${ok ? '<p class="muted" style="margin-bottom:14px">Relatório final em HTML, no formato de painel, com o carimbo da aprovação. Abre em qualquer navegador e pode ser impresso ou salvo em PDF. O Excel traz a base completa.</p>' : '<p class="muted" style="margin-bottom:14px">Liberado assim que a aprovação for registrada.</p>'}
       <div class="btns">
         <button class="btn" data-action="fluxo-relatorio" data-fr="${fr}" ${ok ? '' : 'disabled'}>Baixar relatório final (HTML)</button>
@@ -632,7 +692,7 @@
     const pronto = !!(s.reports.razao && s.reports.razao.rows && s.reports.baseAlunos && s.reports.baseAlunos.rows);
     let html = cabecalho('Frente 2', 'Resumo de Tópicos',
       'Abertura da receita por unidade, tipo de aluno (pagante, ProUni, FIES) e semestre, a partir da mesma base: razão do Protheus classificado por tópico e base de alunos do BI.',
-      `<div>${pillFluxo(s)}</div>`) + etapas(s, pronto) + guiaAgora(FR_ATUAL());
+      `<div>${pillFluxo(s)}</div>`) + painelFluxo(FR_ATUAL(), pronto);
 
     html += blocoAprovacao('f2');
     const upInner = `<div class="row" style="margin-bottom:16px"><label class="fld">Competência<input type="month" data-bind="f2.competencia" value="${esc(s.competencia)}"></label>
@@ -651,7 +711,7 @@
     const difs = r.unidades.filter((u) => Math.abs(u.check.difFaturamento) > 0.05 || u.check.difAlunos !== 0);
     const ex = r.excecoes;
 
-    html += `<div class="card"><div class="card-head">${tituloEtapa(2, 'Resumo · ' + compBR(s.competencia))}</div>
+    html += `<div class="card" id="sec-cons"><div class="card-head">${tituloEtapa(2, 'Resumo · ' + compBR(s.competencia))}</div>
       <div class="grid k" style="margin-bottom:16px">
         ${kpi('Faturamento por semestre', brl(Math.abs(tg[T.FAT])), 'todas as unidades')}
         ${kpi('Alunos (BI)', int(tg.qtd), 'pagante + ProUni + FIES')}
@@ -682,7 +742,8 @@
       </tbody></table></div>`}</div>`;
 
     // Check + exceções
-    html += `<div class="card"><div class="card-head"><h2>Check e exceções</h2></div>
+    html += cardRegrasAplicadas(r);
+    html += `<div class="card" id="sec-check"><div class="card-head"><h2>Check e exceções</h2></div>
       <div class="tbl-wrap"><table><thead><tr><th>Unidade</th><th class="num">Faturamento resumo</th><th class="num">Faturamento razão</th><th class="num">Diferença</th><th class="num">Alunos resumo</th><th class="num">Alunos BI</th><th class="num">Diferença</th></tr></thead><tbody>
       ${r.unidades.map((u) => { const c = u.check; const okF = Math.abs(c.difFaturamento) <= 0.05, okA = c.difAlunos === 0; return `<tr><td>${esc(u.unidade)}</td><td class="num">${n2(c.faturamentoResumo)}</td><td class="num">${n2(c.faturamentoRazao)}</td><td class="num" style="color:${okF ? 'var(--ok)' : 'var(--bad)'}">${n2(c.difFaturamento)}</td><td class="num">${int(c.alunosResumo)}</td><td class="num">${int(c.alunosBI)}</td><td class="num" style="color:${okA ? 'var(--ok)' : 'var(--bad)'}">${int(c.difAlunos)}</td></tr>`; }).join('')}
       </tbody></table></div>
@@ -729,13 +790,14 @@
 
   function vRegras() {
     const s = state.regras;
-    const abas = [['regras', 'Regras de justificativa'], ['tipos', 'Tipos de operação'], ['filiais', 'Unidades e filiais'], ['topicos', 'Tópicos do resumo'], ['unidades', 'Unidades do resumo']];
+    const abas = [['regras', 'Regras de justificativa'], ['tipos', 'Tipos de operação'], ['filiais', 'Unidades e filiais'], ['topicos', 'Tópicos do resumo'], ['unidades', 'Unidades do resumo'], ['ajustes', 'Ajustes de aluno']];
     let corpo = '';
     if (s.aba === 'regras') corpo = abaRegras();
     if (s.aba === 'tipos') corpo = abaTipos();
     if (s.aba === 'filiais') corpo = abaFiliais();
     if (s.aba === 'topicos') corpo = abaTopicos();
     if (s.aba === 'unidades') corpo = abaUnidades();
+    if (s.aba === 'ajustes') corpo = abaAjustes();
     return cabecalho('Gestão', 'Regras e parâmetros',
       'O painel central das regras: o time ajusta, inclui ou exclui uma regra sem depender de desenvolvimento. As alterações valem nas próximas execuções.',
       `<div class="btns"><button class="btn ghost sm" data-action="cfg-exportar">Exportar parâmetros</button>${podeExecutar() ? '<button class="btn ghost sm" data-action="cfg-importar">Importar parâmetros</button><button class="btn danger sm" data-action="cfg-reset">Restaurar padrão</button>' : ''}</div>`) +
@@ -797,6 +859,96 @@
       <div class="row" style="margin-top:12px"><label class="fld">Conta<input type="text" id="ct-c" style="width:160px"></label><label class="fld">Tópico<select id="ct-t">${opts('')}</select></label><button class="btn sm" data-action="ct-add">Adicionar</button></div>`;
   }
 
+  // ---------- Ajustes de aluno (semestre e tipo) ----------
+  const ajustesCfg = () => (config.ajustesAluno = config.ajustesAluno || []);
+  const quemAgora = () => (R.ativo ? R.me.nome : 'neste navegador');
+  function abaAjustes() {
+    const rg = state.regras, lista = ajustesCfg(), f = rg.ajFiltro, a = rg.aj;
+    const st = (x) => x.status || (x.ativo === false ? 'revogado' : 'ativo');
+    const cont = { revisar: 0, ativo: 0, revogado: 0 }; lista.forEach((x) => { cont[st(x)]++; });
+    const vis = lista.map((x, i) => ({ ...x, i })).filter((x) => st(x) === f);
+    const regra = config.regraSemestreSemAluno || 'proximo';
+    const fmtAj = (x) => [x.serie ? `Semestre ${x.deSerie ? x.deSerie + 'º → ' : ''}${x.serie}º` : '', x.tipo ? `Tipo ${x.deTipo ? x.deTipo + ' → ' : ''}${x.tipo}` : ''].filter(Boolean).join(' · ');
+    return `<div class="alert info"><div><b>Duas regras para o semestre e o tipo do aluno no Resumo de Tópicos.</b>1) Automática: semestre sem aluno não fica com valor; o valor vai para o próximo semestre com aluno do mesmo tipo (sem próximo, para o anterior). 2) Ajuste manual: para casos pontuais, por lançamento ou por RA, sempre com motivo. Os dois aparecem no resumo, no aval e no relatório final.</div></div>
+      <div class="row" style="margin-bottom:16px">
+        <label class="fld">Regra automática do semestre sem aluno<select data-cfg="regraSemestreSemAluno"><option value="proximo" ${regra === 'proximo' ? 'selected' : ''}>Ligada: vai para o próximo semestre com aluno</option><option value="desligada" ${regra === 'desligada' ? 'selected' : ''}>Desligada</option></select></label>
+        <button class="btn ghost" data-action="aj-importar" type="button">Importar ajustes de uma planilha do resumo</button>
+        <span class="small muted" style="flex:1;min-width:240px">A importação lê a aba Razão da planilha e traz para revisão só os lançamentos digitados à mão que a regra automática não explica.</span>
+      </div>
+      <div class="toolbar"><div class="chips" role="group" aria-label="Situação">${[['revisar', 'Para revisar'], ['ativo', 'Ativos'], ['revogado', 'Revogados']].map(([v, t]) => `<button type="button" class="chip ${f === v ? 'on' : ''}" data-action="aj-filtro" data-v="${v}">${t} · ${int(cont[v])}</button>`).join('')}</div>
+        ${f === 'revisar' && cont.revisar ? `<button class="btn sm" type="button" data-action="aj-aceitar-todos">Aceitar os ${int(cont.revisar)} para revisar</button>` : ''}</div>
+      ${vis.length ? `<div class="tbl-wrap tbl-scroll"><table><thead><tr><th>RA</th><th>Unidade</th><th>Alcance</th><th>Ajuste</th><th class="num">Valor</th><th>Motivo</th><th>Registro</th><th></th></tr></thead><tbody>
+        ${vis.map((x) => `<tr><td class="mono">${esc(x.ra)}</td><td>${esc(x.unidade || '-')}</td><td class="small">${x.doc ? `Lançamento ${esc(x.doc)}${x.conta ? ' · conta ' + esc(x.conta) : ''}` : 'Todos os lançamentos do RA'}</td><td>${esc(fmtAj(x))}</td><td class="num">${x.valor != null && x.valor !== '' ? n2(x.valor) : '-'}</td>
+          <td><input type="text" data-ajmotivo="${x.i}" value="${esc(x.motivo || '')}" placeholder="Obrigatório" aria-label="Motivo do ajuste" style="min-width:200px"></td><td class="small muted">${esc(x.por || '')}${x.em ? '<br>' + esc(x.em) : ''}</td>
+          <td style="white-space:nowrap">${st(x) === 'revisar' ? `<button class="btn sm" type="button" data-action="aj-status" data-i="${x.i}" data-v="ativo">Aceitar</button> <button class="btn ghost sm" type="button" data-action="aj-excluir" data-i="${x.i}">Descartar</button>` : st(x) === 'ativo' ? `<button class="btn danger sm" type="button" data-action="aj-status" data-i="${x.i}" data-v="revogado">Revogar</button>` : `<button class="btn ghost sm" type="button" data-action="aj-status" data-i="${x.i}" data-v="ativo">Reativar</button>`}</td></tr>`).join('')}
+      </tbody></table></div>` : `<div class="empty">${f === 'revisar' ? 'Nada para revisar.' : f === 'ativo' ? 'Nenhum ajuste ativo.' : 'Nenhum ajuste revogado.'}</div>`}
+      <div class="card" style="margin-top:16px;background:var(--navy-ll)"><h3 style="margin-bottom:10px">Novo ajuste</h3><div class="row">
+        <label class="fld">RA<input type="text" data-bind="regras.aj.ra" value="${esc(a.ra)}" style="width:140px"></label>
+        <label class="fld">Lançamento (opcional)<input type="text" data-bind="regras.aj.doc" value="${esc(a.doc)}" placeholder="LOTE/SUB/DOC/LINHA" style="width:180px"></label>
+        <label class="fld">Conta (opcional)<input type="text" data-bind="regras.aj.conta" value="${esc(a.conta)}" style="width:140px"></label>
+        <label class="fld">Valor (opcional)<input type="text" data-bind="regras.aj.valor" value="${esc(a.valor)}" style="width:110px"></label>
+        <label class="fld">Semestre<input type="number" min="1" max="14" data-bind="regras.aj.serie" value="${esc(a.serie)}" style="width:90px"></label>
+        <label class="fld">Tipo de aluno<select data-bind="regras.aj.tipo"><option value="">Manter</option>${['PAGANTE', 'PROUNI', 'FIES'].map((t) => `<option ${a.tipo === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+        <label class="fld" style="flex:1;min-width:220px">Motivo<input type="text" data-bind="regras.aj.motivo" value="${esc(a.motivo)}" placeholder="Por que o semestre ou o tipo muda"></label>
+        <button class="btn" type="button" data-action="aj-salvar">Salvar ajuste</button></div>
+        <p class="small muted" style="margin-top:8px">Sem lançamento, o ajuste vale para todos os lançamentos do RA. Com lançamento, informe também conta e valor para não pegar outras linhas do mesmo documento. Vale na próxima vez que o resumo for processado.</p></div>`;
+  }
+
+  // Lê a aba Razão de uma planilha do resumo e traz os lançamentos com tipo/semestre digitado à mão que a regra automática não explica.
+  async function importarAjustesPlanilha(file) {
+    overlay('Lendo a planilha e procurando ajustes manuais...'); await pausa();
+    try {
+      const buf = new Uint8Array(await file.arrayBuffer());
+      const wb = XLSX.read(buf, { type: 'array', cellFormula: true, sheets: ['Razão', 'Razao'] });
+      const ws = wb.Sheets['Razão'] || wb.Sheets['Razao'];
+      if (!ws) throw new Error('a planilha não tem a aba "Razão"');
+      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+      const hi = aoa.findIndex((r) => r && r.some((c) => FAT.parse.norm(c) === 'ITEM CONTA') && r.some((c) => FAT.parse.norm(c) === 'SERIE'));
+      if (hi < 0) throw new Error('não achei o cabeçalho da aba Razão (ITEM CONTA, SÉRIE)');
+      const H = {}; aoa[hi].forEach((c, j) => { const k = FAT.parse.norm(c); if (k && !(k in H)) H[k] = j; });
+      const col = (k) => H[k];
+      const ref = XLSX.utils.decode_range(ws['!ref']);
+      const base = FAT.parse.readWorkbook(buf, file.name);
+      const bA = (base.find((x) => x.tipo === 'baseAlunos') || {}).rows || [];
+      const bL = (base.find((x) => x.tipo === 'alunosLyceum') || {}).rows || [];
+      const rz = (base.find((x) => x.tipo === 'razao') || {}).rows || [];
+      const alunos = new Map(); bA.forEach((a) => { if (a.ra && !alunos.has(a.ra)) alunos.set(a.ra, a); }); bL.forEach((a) => { if (a.ra && !alunos.has(a.ra)) alunos.set(a.ra, a); });
+      // Quantidade de alunos por unidade x tipo x semestre, com a regra automática ligada e sem ajustes
+      const cfgSem = { ...config, ajustesAluno: [], regraSemestreSemAluno: 'proximo' };
+      const res = bA.length && rz.length ? FAT.resumo.run({ razao: rz, baseAlunos: bA, alunosLyceum: bL, config: cfgSem }) : null;
+      const qtd = {}; if (res) res.unidades.forEach((u) => FAT.resumo.TIPOS_ALUNO.forEach((t) => u.blocos[t].forEach((l) => { qtd[u.unidade + '|' + t + '|' + l.serie] = l.qtd; })));
+      const unidadeDe = (fil, cc) => config.unidadesResumo.find((u) => u.filial === fil && (u.ccRegra === 'diferente' ? cc !== config.centroCustoMedicina : cc === config.centroCustoMedicina));
+      const tipoN = (t) => { const v = FAT.parse.norm(t); return v === 'IMES' ? 'PAGANTE' : v; };
+      const atuais = new Set(ajustesCfg().map((x) => [x.ra, x.doc, x.conta, x.valor].join('|')));
+      let novos = 0, explicados = 0;
+      for (let r = hi + 1; r <= ref.e.r; r++) {
+        const cel = (k) => ws[XLSX.utils.encode_cell({ r, c: col(k) })];
+        const cS = cel('SERIE'), cT = cel('ALUNO'), cU = cel('SITUACAO');
+        if (!cS || !cU || +cU.v !== 1) continue;
+        if (cS.f && cT && cT.f) continue; // fórmula intacta
+        const ra = String((cel('ITEM CONTA') || {}).v || '').trim(); if (!ra) continue;
+        const doc = String((cel('LOTE/SUB/DOC/LINHA') || {}).v || '').trim(), conta = String((cel('CONTA') || {}).v || '').trim();
+        const valor = +(+((cel('MOVIMENTO') || {}).v || 0)).toFixed(2);
+        const fil = FAT.parse.pad((cel('FILIAL DE ORIGEM') || {}).v, 6), cc = String((cel('C CUSTO') || {}).v || '').trim();
+        const u = unidadeDe(fil, cc); const al = alunos.get(ra);
+        const deTipo = al ? tipoN(al.tipoAluno) : '', deSerie = al ? al.serie : '';
+        const paraTipo = tipoN(cT ? cT.v : deTipo), paraSerie = +cS.v;
+        if (u && al && paraTipo === deTipo) {
+          const com = Object.keys(qtd).filter((k) => k.startsWith(u.nome + '|' + deTipo + '|') && qtd[k] > 0).map((k) => +k.split('|')[2]).sort((x, y) => x - y);
+          const prox = com.find((x) => x > deSerie) ?? [...com].reverse().find((x) => x < deSerie);
+          if (!(qtd[u.nome + '|' + deTipo + '|' + deSerie] > 0) && prox === paraSerie) { explicados++; continue; }
+          if (paraSerie === deSerie) continue;
+        }
+        const k = [ra, doc, conta, valor].join('|'); if (atuais.has(k)) continue; atuais.add(k);
+        ajustesCfg().push({ id: 'aj' + Date.now().toString(36) + novos, ra, doc, conta, valor, unidade: u ? u.nome : '', deTipo, deSerie, tipo: paraTipo !== deTipo ? paraTipo : '', serie: paraSerie !== deSerie ? paraSerie : '', motivo: '', status: 'revisar', por: 'importado de ' + file.name + ' por ' + quemAgora(), em: agora() });
+        novos++;
+      }
+      salvarConfig(); state.regras.ajFiltro = 'revisar';
+      toast(`${novos} ajuste(s) para revisar. ${explicados} lançamento(s) já são cobertos pela regra automática e não foram trazidos.`);
+    } catch (e) { console.error(e); toast('Não consegui importar: ' + e.message); }
+    overlay(null); render();
+  }
+
   function abaUnidades() {
     return `<p class="muted" style="margin-bottom:12px">Cada unidade do resumo é uma filial com uma regra de centro de custo (${esc(config.centroCustoMedicina)} = medicina). O nome no BI liga a unidade à base de alunos.</p>
       <div class="tbl-wrap"><table><thead><tr><th>Unidade</th><th>Filial</th><th>Centro de custo</th><th>Nome no BI</th><th class="num">ISS %</th><th class="num">PDD %</th></tr></thead><tbody>
@@ -822,12 +974,13 @@
   }
 
   // ======================================================== USUÁRIOS (admin)
-  const PAPEIS = { admin: 'Administradora', executora: 'Executora', aprovadora: 'Aprovadora' };
+  const PAPEIS = { ambos: 'Executa e aprova', executora: 'Só executa', aprovadora: 'Só aprova', admin: 'Administradora' };
   function vUsuarios() {
     if (!R.ativo || papel() !== 'admin') return cabecalho('Gestão', 'Usuários', '') + '<div class="alert info"><div>Esta tela é só da administradora do portal compartilhado.</div></div>';
     const u = state.usuarios, nova = R.novaSenha;
     const opts = (sel) => Object.entries(PAPEIS).map(([v, t]) => `<option value="${v}" ${sel === v ? 'selected' : ''}>${t}</option>`).join('');
-    return cabecalho('Gestão', 'Usuários', 'Quem entra no portal e o que cada pessoa pode fazer. A executora sobe, confere e envia. A aprovadora dá o aval e aprova ou devolve. A administradora faz tudo e cadastra as pessoas.') +
+    return cabecalho('Gestão', 'Usuários', 'Quem entra no portal e o que cada pessoa pode fazer. "Executa e aprova" faz o fluxo inteiro: sobe, confere, envia, dá o aval e aprova. Os perfis "só executa" e "só aprova" limitam a pessoa a uma parte. A administradora faz tudo e cadastra as pessoas.') +
+      `<div class="card"><div class="card-head"><h2>Aprovação</h2></div><div class="row"><label class="fld">Quem pode aprovar uma conferência<select data-cfg="exigirAprovadorDiferente" data-bool="1"><option value="" ${config.exigirAprovadorDiferente ? '' : 'selected'}>Qualquer pessoa que aprova, inclusive quem enviou</option><option value="1" ${config.exigirAprovadorDiferente ? 'selected' : ''}>Só outra pessoa (quem enviou não aprova)</option></select></label><span class="small muted" style="flex:1;min-width:240px">O histórico sempre registra quem enviou e quem aprovou, nos dois casos.</span></div></div>` +
       (nova ? `<div class="alert ok"><div><b>Senha temporária de ${esc(nova.email)}</b>Passe por um canal separado do e-mail de acesso (telefone ou mensagem). No primeiro acesso o portal pede para trocar. Ela não aparece de novo.<br><span class="senha-temp">${esc(nova.senha)}</span></div><button class="btn ghost sm" data-action="usr-ok" style="margin-left:auto">Já anotei</button></div>` : '') +
       `<div class="card"><div class="card-head"><h2>Nova pessoa</h2></div><div class="row">
         <label class="fld" style="flex:1;min-width:200px">Nome<input type="text" data-bind="usuarios.nome" value="${esc(u.nome)}"></label>
@@ -1033,7 +1186,7 @@
       case 'usr-ok': R.novaSenha = null; render(); break;
       case 'usr-criar': (async () => {
         const u = state.usuarios;
-        try { const r = await R.api('POST', 'usuarios', { nome: u.nome, email: u.email, papel: u.papel }); R.novaSenha = { email: r.email, senha: r.senhaTemporaria }; state.usuarios = { nome: '', email: '', papel: 'executora' }; await recarregarUsuarios(); window.scrollTo(0, 0); } catch (e) { toast(e.message); }
+        try { const r = await R.api('POST', 'usuarios', { nome: u.nome, email: u.email, papel: u.papel }); R.novaSenha = { email: r.email, senha: r.senhaTemporaria }; state.usuarios = { nome: '', email: '', papel: 'ambos' }; await recarregarUsuarios(); window.scrollTo(0, 0); } catch (e) { toast(e.message); }
       })(); break;
       case 'usr-senha': if (confirm('Gerar uma nova senha temporária? A senha atual deixa de valer e a pessoa sai do portal.')) (async () => {
         try { const r = await R.api('PATCH', 'usuarios?id=' + encodeURIComponent(el.dataset.id), { novaSenha: true }); const x = R.usuarios.find((y) => y.id === el.dataset.id); R.novaSenha = { email: x ? x.email : '', senha: r.senhaTemporaria }; await recarregarUsuarios(); window.scrollTo(0, 0); } catch (e) { toast(e.message); }
@@ -1091,6 +1244,29 @@
       case 'uf-del': delete config.unidadeFilial[el.dataset.u]; salvarConfig(); render(); break;
       case 'ct-add': { const c = document.getElementById('ct-c').value.trim(); if (!c) { toast('Informe a conta.'); return; } config.contaTopico[c] = document.getElementById('ct-t').value; salvarConfig(); render(); break; }
       case 'ct-del': delete config.contaTopico[el.dataset.c]; salvarConfig(); render(); break;
+      case 'ir-ajustes': rg.aba = 'ajustes'; break;
+      case 'ir-secao': { const alvo = document.getElementById(el.dataset.alvo); if (alvo) { if (alvo.tagName === 'DETAILS') alvo.open = true; alvo.scrollIntoView({ behavior: 'smooth', block: 'start' }); alvo.classList.add('pisca'); setTimeout(() => alvo.classList.remove('pisca'), 1600); } else toast('Essa etapa ainda não está disponível.'); break; }
+      case 'aj-filtro': rg.ajFiltro = el.dataset.v; render(); break;
+      case 'aj-importar': { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.xlsx,.xlsm,.xls'; inp.onchange = () => { if (inp.files[0]) importarAjustesPlanilha(inp.files[0]); }; inp.click(); break; }
+      case 'aj-status': { const x = ajustesCfg()[+el.dataset.i]; if (el.dataset.v === 'ativo' && !String(x.motivo || '').trim()) { toast('Preencha o motivo antes de aceitar.'); return; } x.status = el.dataset.v; x.ativo = el.dataset.v === 'ativo'; x.revisadoPor = quemAgora(); x.revisadoEm = agora(); salvarConfig(); render(); break; }
+      case 'aj-excluir': ajustesCfg().splice(+el.dataset.i, 1); salvarConfig(); render(); break;
+      case 'aj-aceitar-todos': {
+        const pend = ajustesCfg().filter((x) => (x.status || 'ativo') === 'revisar');
+        const sem = pend.filter((x) => !String(x.motivo || '').trim()).length;
+        const motivo = sem ? prompt(`${sem} ajuste(s) sem motivo. Escreva um motivo para usar neles:`, 'Ajuste da planilha revisado') : '';
+        if (sem && !motivo) return;
+        pend.forEach((x) => { if (!String(x.motivo || '').trim()) x.motivo = motivo; x.status = 'ativo'; x.ativo = true; x.revisadoPor = quemAgora(); x.revisadoEm = agora(); });
+        salvarConfig(); toast(`${pend.length} ajuste(s) ativos. Valem na próxima vez que o resumo for processado.`); render(); break;
+      }
+      case 'aj-salvar': {
+        const a = rg.aj;
+        if (!a.ra.trim()) { toast('Informe o RA.'); return; }
+        if (!a.serie && !a.tipo) { toast('Informe o semestre ou o tipo de aluno.'); return; }
+        if (!a.motivo.trim()) { toast('O motivo é obrigatório.'); return; }
+        ajustesCfg().push({ id: 'aj' + Date.now().toString(36), ra: a.ra.trim(), doc: a.doc.trim(), conta: a.conta.trim(), valor: a.valor === '' ? '' : +String(a.valor).replace(/\./g, '').replace(',', '.'), tipo: a.tipo, serie: a.serie ? +a.serie : '', motivo: a.motivo.trim(), status: 'ativo', ativo: true, por: quemAgora(), em: agora() });
+        rg.aj = { ra: '', doc: '', conta: '', valor: '', tipo: '', serie: '', motivo: '' }; rg.ajFiltro = 'ativo';
+        salvarConfig(); toast('Ajuste salvo. Vale na próxima vez que o resumo for processado.'); render(); break;
+      }
       case 'hist-export': { const h = historico(); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(h), 'Histórico'); XLSX.writeFile(wb, 'historico-aprovacoes-portal-fat.xlsx'); break; }
       case 'hist-limpar': if (confirm('Apagar todo o histórico de aprovações e os relatórios guardados neste navegador?')) { FAT.store.limparHistorico(); FAT.store.limparRelatorios(); render(); } break;
     }
@@ -1118,8 +1294,9 @@
   });
 
   function aplicarBind(el) {
-    const [fr, k] = el.dataset.bind.split('.');
-    state[fr][k] = el.type === 'checkbox' ? el.checked : el.value;
+    const partes = el.dataset.bind.split('.');
+    let o = state; partes.slice(0, -1).forEach((p) => { o = o[p]; });
+    o[partes[partes.length - 1]] = el.type === 'checkbox' ? el.checked : el.value;
   }
   $main.addEventListener('input', (ev) => {
     const el = ev.target;
@@ -1146,6 +1323,8 @@
     }
     if (el.dataset.dec) { const d = state.f1.decisoes[el.dataset.dec] || (state.f1.decisoes[el.dataset.dec] = {}); d.decisao = el.value; agendar('f1', 'decisoes', el.dataset.dec); }
     if (el.dataset.usrPapel) R.api('PATCH', 'usuarios?id=' + encodeURIComponent(el.dataset.usrPapel), { papel: el.value }).then(() => { toast('Perfil atualizado.'); recarregarUsuarios(); }).catch((e) => { toast(e.message); recarregarUsuarios(); });
+    if (el.dataset.cfg) { config[el.dataset.cfg] = el.dataset.bool ? !!el.value : el.value; salvarConfig(); toast('Parâmetro atualizado.'); }
+    if (el.dataset.ajmotivo != null) { ajustesCfg()[+el.dataset.ajmotivo].motivo = el.value; salvarConfig(); }
     if (el.dataset.tipoI) { config.tiposOperacao[+el.dataset.tipoI].tipo = el.value; salvarConfig(); toast('Classificação atualizada.'); }
     if (el.dataset.uf) { config.unidadeFilial[el.dataset.uf] = FAT.parse.pad(el.value, 6); salvarConfig(); }
     if (el.dataset.fn != null) { config.filiais[el.dataset.fn] = el.value.trim(); salvarConfig(); }

@@ -5,7 +5,10 @@ const { um } = require('./db');
 
 const COOKIE = 'fat_sessao';
 const DURACAO = 12 * 3600; // 12 horas
-const PAPEIS = ['admin', 'executora', 'aprovadora'];
+const PAPEIS = ['admin', 'executora', 'aprovadora', 'ambos'];
+// O que cada perfil pode: 'ambos' executa e aprova (inclusive a própria conferência, se o parâmetro deixar).
+const PODE = { executora: ['admin', 'executora', 'ambos'], aprovadora: ['admin', 'aprovadora', 'ambos'], admin: ['admin'] };
+const pode = (u, acao) => (PODE[acao] || []).includes(u.papel);
 
 function segredo() {
   const s = process.env.JWT_SECRET;
@@ -60,7 +63,7 @@ async function usuario(req, papeis, opcoes = {}) {
   if (!u || !u.ativo || u.sessao_versao !== pl.v) throw new Erro(401, 'Sessão expirada. Entre de novo.');
   u.trocar_senha = !!u.trocar_senha;
   if (u.trocar_senha && !opcoes.permitirTroca) throw new Erro(403, 'Troque a senha antes de continuar.');
-  if (papeis && u.papel !== 'admin' && !papeis.includes(u.papel)) throw new Erro(403, 'Seu perfil não tem permissão para isso.');
+  if (papeis && !papeis.some((p) => pode(u, p))) throw new Erro(403, 'Seu perfil não tem permissão para isso.');
   return u;
 }
 
@@ -86,4 +89,4 @@ function validaNovaSenha(s) {
 }
 const senhaTemporaria = () => crypto.randomBytes(9).toString('base64url');
 
-module.exports = { COOKIE, PAPEIS, assinar, verificar, cookies, abrirSessao, fecharSessao, usuario, hashSenha, confereSenha, validaNovaSenha, senhaTemporaria };
+module.exports = { COOKIE, PAPEIS, pode, assinar, verificar, cookies, abrirSessao, fecharSessao, usuario, hashSenha, confereSenha, validaNovaSenha, senhaTemporaria };
