@@ -47,7 +47,7 @@
     regras: { aba: 'regras', busca: '', edit: null, ajFiltro: 'revisar', aj: { ra: '', doc: '', conta: '', valor: '', tipo: '', serie: '', motivo: '' } },
     uploadAlvo: 'f1',
     usuarios: { nome: '', email: '', papel: 'ambos' },
-    filaVer: 'tudo',
+    filaVer: 'minha',
   };
 
   let tCfg = null;
@@ -138,8 +138,8 @@
   function montarUsuario() {
     const box = document.getElementById('userbox'); if (!box) return;
     const PAP = { admin: 'administradora', executora: 'executora', aprovadora: 'aprovadora', ambos: 'executa e aprova' };
-    box.className = 'user';
-    box.innerHTML = `<span class="salvo" id="salvoTxt" aria-live="polite"></span><span><b>${esc(R.me.nome)}</b> <span class="papel muted">· ${PAP[R.me.papel] || ''}</span></span><a href="#senha">Trocar senha</a><a href="#" data-sair>Sair</a>`;
+    const ini = R.me.nome.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('');
+    box.innerHTML = `<div class="me"><span class="av" aria-hidden="true">${esc(ini)}</span><span class="me-tx"><b>${esc(R.me.nome)}</b><small>${PAP[R.me.papel] || ''}</small></span></div><div class="me-links"><a href="#senha">Trocar senha</a><a href="#" data-sair>Sair</a></div><div class="foot">Master Project · versão 1.6</div>`;
     box.querySelector('[data-sair]').addEventListener('click', (e) => { e.preventDefault(); salvarPendentes().finally(R.sair); });
     if (R.me.papel === 'admin') document.getElementById('navUsuarios').classList.remove('hidden');
   }
@@ -169,8 +169,19 @@
     const r = ROTAS[state.rota] ? state.rota : 'inicio';
     document.querySelectorAll('.side a').forEach((a) => a.classList.toggle('on', a.dataset.route === r));
     $main.innerHTML = '<div class="page">' + ROTAS[r]() + '</div>';
+    atualizaCrumbs(r);
     const b = document.getElementById('badgeFila');
     if (b) { const n = itensFila().filter((q) => q.papel === 'aprov' || q.cls === 'q-dev').length; b.textContent = n ? String(n) : ''; }
+  }
+  const CRUMBS = { inicio: ['', 'Fila de trabalho'], guia: ['Ajuda', 'Como funciona'], frente1: ['Frentes', 'Conferência da Integração'], frente2: ['Frentes', 'Resumo de Tópicos'], frente3: ['Frentes', 'Base Consolidada'], regras: ['Gestão', 'Regras e parâmetros'], historico: ['Gestão', 'Histórico de aprovações'], usuarios: ['Gestão', 'Usuários'], senha: ['Acesso', 'Trocar senha'] };
+  function atualizaCrumbs(r) {
+    const tx = document.getElementById('crumbsTx'), st = document.getElementById('crumbsSt');
+    if (!tx) return;
+    const [sec, tit] = CRUMBS[r] || ['', ''];
+    const fr = r === 'frente1' ? 'f1' : r === 'frente2' ? 'f2' : null, s = fr && state[fr];
+    const det = s && s.res ? ' · ' + (fr === 'f1' ? (s.rotina === 'Baixa' ? 'Baixas' : 'Faturamento') + ' · ' : '') + compBR(s.competencia) : '';
+    tx.innerHTML = (sec ? `<span class="muted">${esc(sec)}</span><span class="sep" aria-hidden="true">/</span>` : '') + `<b>${esc(tit)}${esc(det)}</b>`;
+    st.innerHTML = s ? pillFluxo(s) : '';
   }
   async function irPara() {
     state.rota = (location.hash || '#inicio').slice(1);
@@ -228,34 +239,50 @@
       if (!s.res) return { ...b, papel: 'exec', cls: 'q-exec', tag: pill('mute', 'Aguardando arquivos'), quem: s.envPor + ' (executora)', desde: '-', prox: 'Subir os relatórios e processar', acao: 'Abrir' };
       if (st === 'rascunho') return { ...b, papel: 'exec', cls: 'q-exec', tag: pill('info', 'Em conferência'), quem: s.envPor + ' (executora)', desde: '-', prox: k === 'f1' ? `Registrar as decisões das ${int(s.res.kpis.pendentes)} pendências e enviar` : 'Conferir o check e enviar para aprovação', acao: 'Continuar' };
       if (st === 'devolvido') return { ...b, papel: 'exec', cls: 'q-dev', tag: pill('bad', 'Devolvido para ajuste'), quem: s.envPor + ' (executora)', desde: f.devolucao.em, prox: 'Ajustar o que foi apontado e reenviar', acao: 'Ajustar' };
-      if (st === 'em_aprovacao') { const c = contagemAval(k); return { ...b, papel: 'aprov', cls: 'q-aprov', tag: pill('warn', 'Aguardando aprovação'), quem: s.valPor + ' (aprovadora)', desde: f.envio.em, prox: `Dar o aval: ${int(c.sim + c.nao)} de ${int(c.total)} itens avaliados`, acao: 'Avaliar' }; }
-      return { ...b, papel: 'fim', cls: 'q-ok', tag: pill('ok', 'Aprovado'), quem: f.aprovacao.por + ' (aprovou)', desde: f.aprovacao.em, prox: 'Baixar o relatório final', acao: 'Ver resultado' };
+      if (st === 'em_aprovacao') { const c = contagemAval(k); return { ...b, prog: [c.sim + c.nao, c.total, c.nao], papel: 'aprov', cls: 'q-aprov', tag: pill('warn', 'Aguardando aprovação'), quem: s.valPor + ' (aprovadora)', desde: f.envio.em, prox: `Dar o aval: ${int(c.sim + c.nao)} de ${int(c.total)} itens avaliados`, acao: 'Avaliar' }; }
+      return { ...b, prog: [contagemAval(k).total, contagemAval(k).total, 0], papel: 'fim', cls: 'q-ok', tag: pill('ok', 'Aprovado'), quem: f.aprovacao.por + ' (aprovou)', desde: f.aprovacao.em, prox: 'Baixar o relatório final', acao: 'Ver resultado' };
     });
     out.push({ k: 'f3', rota: 'frente3', nome: 'Base Consolidada', n: 'Frente 3', det: 'sem prazo', papel: 'bloq', cls: '', tag: pill('mute', 'Aguarda Lyceum v10'), quem: '-', desde: '-', prox: 'Começa depois da atualização do Lyceum', acao: 'Ver' });
     return out;
   }
 
+  function proxFechamento() {
+    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + 1);
+    while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  }
   function vInicio() {
-    const fila = itensFila(), ver = state.filaVer;
-    const vis = fila.filter((q) => ver === 'tudo' || q.papel === ver);
-    const hist = historico();
-    const nAprov = fila.filter((q) => q.papel === 'aprov').length, nExec = fila.filter((q) => q.papel === 'exec').length;
-    const aprovadas = hist.filter((h) => (h.status || 'Aprovado') === 'Aprovado').length, devolvidas = hist.filter((h) => h.status === 'Devolvido').length;
-    const opt = [['tudo', 'Tudo'], ['exec', 'Com a executora'], ['aprov', 'Com a aprovadora']];
-    const passos = [['Envio dos arquivos', 'Executora sobe os relatórios'], ['Conferência', 'Portal cruza e aponta pendências'], ['Aprovação', 'Aval item a item, aprova ou devolve'], ['Resultado final', 'Relatório HTML e Excel']];
-    return cabecalho('Clariens · Contabilidade e Controladoria', 'Fila de trabalho',
-      'O que está com cada pessoa agora. A executora sobe e confere, a aprovadora dá o aval item a item e aprova ou devolve, e só depois sai o resultado final.') +
-      `<div class="grid k" style="margin-bottom:16px">
-        ${kpi('Com a executora', int(nExec), 'subir, conferir ou ajustar')}
-        ${kpi('Aguardando aprovação', int(nAprov), 'aval da aprovadora', nAprov ? 'warn' : '')}
-        ${kpi('Aprovações registradas', int(aprovadas), R.ativo ? 'no portal' : 'neste navegador', aprovadas ? 'ok' : '')}
-        ${kpi('Devoluções registradas', int(devolvidas), R.ativo ? 'no portal' : 'neste navegador')}
+    const fila = itensFila(), hist = historico();
+    fila.forEach((q) => { q.minha = (q.papel === 'aprov' && podeAprovar(state[q.k])) || (q.papel === 'exec' && podeExecutar()); });
+    const minhas = fila.filter((q) => q.minha), ver = state.filaVer === 'tudo' ? 'tudo' : 'minha';
+    const vis = ver === 'tudo' ? fila : minhas;
+    const nome = R.ativo ? R.me.nome.split(/\s+/)[0] : '';
+    const hr = new Date().getHours(), saud = hr < 12 ? 'Bom dia' : hr < 18 ? 'Boa tarde' : 'Boa noite';
+    const mes = new Date().toLocaleDateString('pt-BR', { month: '2-digit', year: 'numeric' });
+    const doMes = (x) => String(x.em || '').slice(3, 10) === mes;
+    const aprovMes = hist.filter((x) => (x.status || 'Aprovado') === 'Aprovado' && doMes(x)).length, devMes = hist.filter((x) => x.status === 'Devolvido' && doMes(x)).length;
+    const comExec = fila.filter((q) => q.papel === 'exec').length, devolvidas = fila.filter((q) => q.cls === 'q-dev').length;
+    const primeiro = minhas[0];
+    const sub = minhas.length ? `${minhas.length === 1 ? 'Uma etapa espera' : int(minhas.length) + ' etapas esperam'} por você.` : 'Nada esperando por você agora.';
+    const barra = (q) => (q.prog ? `<div class="prog"><div class="bar"><i style="width:${q.prog[1] ? ((q.prog[0] - q.prog[2]) / q.prog[1]) * 100 : 0}%"></i><i class="n" style="width:${q.prog[1] ? (q.prog[2] / q.prog[1]) * 100 : 0}%"></i></div><span>${int(q.prog[0])} de ${int(q.prog[1])}</span></div>` : '<span class="muted">-</span>');
+    const ponto = (st) => (st === 'Aprovado' ? 'ok' : 'bad');
+    return `<div class="hello"><div><h1>${saud}${nome ? ', ' + esc(nome) : ''}</h1><p>${sub}${devolvidas ? ` ${devolvidas === 1 ? 'Uma conferência voltou' : devolvidas + ' conferências voltaram'} para ajuste.` : ' Nenhuma devolução em aberto.'}</p></div>
+        ${primeiro ? `<a class="btn" href="#${primeiro.rota}">${esc(primeiro.acao)}: ${esc(primeiro.nome)} <span aria-hidden="true">→</span></a>` : ''}</div>
+      <div class="kcards">
+        <div class="kc"><span class="l">Sua vez</span><span class="v vez">${int(minhas.length)}</span><span class="s">${primeiro ? esc(primeiro.nome) : 'nada pendente'}</span></div>
+        <div class="kc"><span class="l">Com a executora</span><span class="v">${int(comExec)}</span><span class="s">subir, conferir ou ajustar</span></div>
+        <div class="kc"><span class="l">Aprovadas no mês</span><span class="v ok">${int(aprovMes)}</span><span class="s">${devMes ? int(devMes) + ' devolução(ões) no mês' : 'nenhuma devolução no mês'}</span></div>
+        <div class="kc"><span class="l">Próximo fechamento</span><span class="v">${proxFechamento()}</span><span class="s">Faturamento · 1º dia útil</span></div>
       </div>
-      <div class="card"><div class="card-head"><h2>Em andamento</h2><div class="btns">${R.ativo ? '<button type="button" class="btn ghost sm" data-action="sync">Atualizar</button>' : ''}<div class="seg" role="group" aria-label="Filtrar a fila">${opt.map(([v, t]) => `<button type="button" data-action="fila-ver" data-v="${v}" class="${ver === v ? 'on' : ''}">${t}</button>`).join('')}</div></div></div>
-      ${vis.length ? `<div class="tbl-wrap"><table class="fila"><thead><tr><th>Frente</th><th>Situação</th><th>Com quem</th><th>Desde</th><th>Próximo passo</th><th></th></tr></thead><tbody>${vis.map((q) => `<tr class="${q.cls}"><td class="fr">${esc(q.n)} · ${esc(q.nome)}<small>${esc(q.det)}</small></td><td>${q.tag}</td><td>${esc(q.quem)}</td><td class="small">${esc(q.desde)}</td><td class="nx">${esc(q.prox)}</td><td class="num"><a class="btn ${q.papel === 'aprov' || q.papel === 'exec' ? '' : 'ghost'} sm" href="#${q.rota}">${esc(q.acao)}</a></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Nada com essa pessoa agora.</div>'}
-      <p class="small muted" style="margin-top:10px">${R.ativo ? 'A fila é a mesma para todo mundo que entra no portal. Use "Atualizar" para ver o que mudou desde que você abriu a página.' : 'A fila mostra o trabalho aberto neste navegador. No modo local, executora e aprovadora usam o mesmo computador.'}</p></div>
-      <div class="card"><div class="card-head"><h2>Concluídas recentemente</h2><a class="btn ghost sm" href="#historico">Ver histórico</a></div>${hist.length ? tabelaHistorico(hist.slice(0, 6)) : '<div class="empty">Nenhuma aprovação registrada ainda.</div>'}</div>
-      <div class="card"><div class="card-head"><h2>Como funciona</h2><a class="btn ghost sm" href="#guia">Ver o passo a passo completo</a></div><ol class="flow" style="margin:0" aria-label="Fluxo das frentes">${passos.map(([t, d], i) => `<li><span class="dot">${i + 1}</span><span><b>${t}</b><small>${d}</small></span></li>`).join('')}</ol></div>`;
+      <section class="card flush"><div class="card-head"><h2>Em andamento</h2><div class="btns">${R.ativo ? '<button type="button" class="btn ghost sm" data-action="sync">Atualizar</button>' : ''}<div class="seg" role="group" aria-label="Filtrar a fila"><button type="button" data-action="fila-ver" data-v="minha" class="${ver === 'minha' ? 'on' : ''}">Minha vez · ${int(minhas.length)}</button><button type="button" data-action="fila-ver" data-v="tudo" class="${ver === 'tudo' ? 'on' : ''}">Todas · ${int(fila.length)}</button></div></div></div>
+        ${vis.length ? `<div class="tbl-wrap bare"><table class="fila"><thead><tr><th>Frente</th><th>Situação</th><th>Com quem</th><th>Progresso do aval</th><th>Próximo passo</th><th></th></tr></thead><tbody>${vis.map((q) => `<tr><td class="fr">${esc(q.nome)}<small>${esc(q.n)} · ${esc(q.det)}</small></td><td>${q.minha && q.papel !== 'fim' ? pill('warn', 'Sua vez') : q.tag}</td><td>${esc(q.quem)}${q.desde !== '-' ? `<small class="muted" style="display:block">desde ${esc(q.desde)}</small>` : ''}</td><td>${barra(q)}</td><td class="nx">${esc(q.prox)}</td><td class="num"><a class="btn ${q.minha && q.papel !== 'fim' ? '' : 'ghost'} sm" href="#${q.rota}">${esc(q.acao)}</a></td></tr>`).join('')}</tbody></table></div>` : `<div class="empty">Nada esperando por você agora. <button type="button" class="btn ghost sm" data-action="fila-ver" data-v="tudo">Ver todas</button></div>`}
+      </section>
+      <div class="duas">
+        <section class="card"><div class="card-head"><h2>Atividade recente</h2><a class="btn ghost sm" href="#historico">Ver histórico</a></div>
+          ${hist.length ? `<ol class="ativ">${hist.slice(0, 5).map((x) => `<li><span class="pt ${ponto(x.status || 'Aprovado')}" aria-hidden="true"></span><span><b>${esc(x.frente)} ${esc(compBR(x.competencia))}</b> ${(x.status || 'Aprovado') === 'Aprovado' ? 'aprovada' : 'devolvida'} por ${esc(x.por)}${x.obs ? ': ' + esc(x.obs.slice(0, 90)) : ''}<small>${esc(x.em)}</small></span></li>`).join('')}</ol>` : '<p class="muted">Nenhuma aprovação registrada ainda.</p>'}</section>
+        <section class="card"><div class="card-head"><h2>Como o fluxo anda</h2><a class="btn ghost sm" href="#guia">Como funciona</a></div>
+          <ol class="passos">${[['Envio', 'sobe os relatórios'], ['Conferência', 'portal cruza e aponta'], ['Aval', 'item a item, aprova ou devolve'], ['Resultado', 'relatório e Excel']].map(([t, d], i) => `<li><b>${i + 1} · ${t}</b><span>${d}</span></li>`).join('')}</ol></section>
+      </div>`;
   }
 
   // ======================================================== COMO FUNCIONA
@@ -315,7 +342,7 @@
   function painelFluxo(fr, pronto) {
     const itens = itensChecklist(fr, pronto), g = passoAgora(fr);
     const feitos = itens.filter((i) => i.st === 'ok').length;
-    const prox = itens.find((i) => i.st === 'agora' || i.st === 'volta' || i.st === 'alerta');
+    const prox = itens.find((i) => i.st === 'agora' || i.st === 'volta') || itens.find((i) => i.st === 'alerta');
     const ic = { ok: '✓', agora: '•', volta: '↺', alerta: '!', pend: '' };
     return `<section class="fluxo" aria-label="Checklist da conferência">
       <div class="fluxo-h"><div><div class="fluxo-k">Checklist da conferência</div><b>${feitos} de ${itens.length} etapas concluídas</b></div><div class="fluxo-bar" aria-hidden="true"><i style="width:${(feitos / itens.length) * 100}%"></i></div></div>
@@ -373,7 +400,7 @@
     const tabelasNoArquivo = s.reports.tipoOperacao || s.reports.regra;
     let html = cabecalho('Frente 1', 'Conferência da Integração',
       'Confere se tudo que foi gerado no Lyceum subiu para o Protheus e entrou no razão. O "verde" da integração não basta: só o cruzamento com o razão confirma.',
-      `<div>${pillFluxo(s)}</div>`) + painelFluxo(FR_ATUAL(), pronto);
+      '') + painelFluxo(FR_ATUAL(), pronto);
 
     html += blocoAprovacao('f1');
     const upInner = `<div class="row" style="margin-bottom:16px">
@@ -578,7 +605,7 @@
     const pos = sel ? vis.findIndex((i) => i.key === sel.key) : -1;
     const painel = !sel ? '<div class="av-empty">Selecione um item na lista.</div>' : `
       <div><div class="av-pos">${esc(sel.grupo)} · item ${pos + 1} de ${int(vis.length)}${s.avalFiltro !== 'todos' || s.avalBusca ? ' no filtro' : ''}</div><h3>${esc(sel.titulo)}</h3></div>
-      <dl class="av-dl">${sel.campos.map(([k, v, hl]) => `<dt>${esc(k)}</dt><dd class="${hl ? 'hl' : ''}">${esc(v == null || v === '' ? '-' : v)}</dd>`).join('')}</dl>
+      <dl class="av-dl">${sel.campos.map(([k, v, hl]) => `<div class="${hl ? 'hl' : ''}"><dt>${esc(k)}</dt><dd>${esc(v == null || v === '' ? '-' : v)}</dd></div>`).join('')}</dl>
       <div class="av-choice" role="group" aria-label="Seu aval">
         <button type="button" class="av-btn sim ${a.ok === 'sim' ? 'on' : ''}" data-action="aval-set" data-fr="${fr}" data-v="sim" aria-pressed="${a.ok === 'sim'}"><kbd>A</kbd> De acordo</button>
         <button type="button" class="av-btn nao ${a.ok === 'nao' ? 'on' : ''}" data-action="aval-set" data-fr="${fr}" data-v="nao" aria-pressed="${a.ok === 'nao'}"><kbd>N</kbd> Não de acordo</button>
@@ -692,7 +719,7 @@
     const pronto = !!(s.reports.razao && s.reports.razao.rows && s.reports.baseAlunos && s.reports.baseAlunos.rows);
     let html = cabecalho('Frente 2', 'Resumo de Tópicos',
       'Abertura da receita por unidade, tipo de aluno (pagante, ProUni, FIES) e semestre, a partir da mesma base: razão do Protheus classificado por tópico e base de alunos do BI.',
-      `<div>${pillFluxo(s)}</div>`) + painelFluxo(FR_ATUAL(), pronto);
+      '') + painelFluxo(FR_ATUAL(), pronto);
 
     html += blocoAprovacao('f2');
     const upInner = `<div class="row" style="margin-bottom:16px"><label class="fld">Competência<input type="month" data-bind="f2.competencia" value="${esc(s.competencia)}"></label>
@@ -732,7 +759,8 @@
     const linhas = bl === 'TOTAL' || bl === 'SEMESTRES' ? null : un.blocos[bl];
     html += `<div class="card"><div class="card-head"><h2>Detalhe por unidade</h2>
       <label class="fld" style="flex-direction:row;align-items:center;gap:8px">Unidade<select data-bind="f2.unidade">${r.unidades.map((u) => `<option ${u.unidade === un.unidade ? 'selected' : ''}>${esc(u.unidade)}</option>`).join('')}</select></label></div>
-      <p class="small muted" style="margin-bottom:12px">${esc(un.razaoSocial)} · filial ${esc(un.filial)} · BI "${esc(un.unidadeBI)}" · ISS ${n2(un.iss * 100)}% · PDD ${n2(un.pdd * 100)}%</p>
+      <p class="small muted" style="margin-bottom:14px">${esc(un.razaoSocial)} · filial ${esc(un.filial)} · BI "${esc(un.unidadeBI)}" · ISS ${n2(un.iss * 100)}% · PDD ${n2(un.pdd * 100)}%</p>
+      ${(() => { FAT.resumo.completar(r); const t = un.resumoSemestre.total; return `<div class="kcards" style="margin-bottom:16px"><div class="kc"><span class="l">Alunos ativos</span><span class="v">${int(t.qtd)}</span><span class="s">pagante + ProUni + FIES</span></div><div class="kc"><span class="l">Receita bruta</span><span class="v">${brl(t.receitaBruta)}</span><span class="s">ticket bruto ${brl(t.ticketBruto)}</span></div><div class="kc"><span class="l">Receita líquida</span><span class="v">${brl(t.receitaLiquida)}</span><span class="s">${t.receitaBruta ? n2((t.receitaLiquida / t.receitaBruta) * 100) + '% da bruta' : '-'}</span></div><div class="kc destaque"><span class="l">Ticket médio líquido</span><span class="v">${brl(t.ticketLiquido)}</span><span class="s">receita líquida ÷ alunos</span></div></div>`; })()}
       <div class="tabs" role="tablist">${['SEMESTRES', 'PAGANTE', 'PROUNI', 'FIES', 'TOTAL'].map((b) => `<button type="button" role="tab" aria-selected="${bl === b}" class="${bl === b ? 'on' : ''}" data-action="f2-bloco" data-v="${b}">${b === 'SEMESTRES' ? 'Resumo por semestre' : b === 'TOTAL' ? 'Total por tipo' : b === 'PROUNI' ? 'ProUni' : b.charAt(0) + b.slice(1).toLowerCase()}</button>`).join('')}</div>
       ${bl === 'SEMESTRES' ? tabelaSemestres(un) : `<div class="tbl-wrap"><table><thead><tr><th>${linhas ? 'Semestre' : 'Tipo de aluno'}</th><th class="num">Qtd</th><th class="num">Ticket médio</th>${r.topicos.map((t) => `<th class="num">${esc(t)}</th>`).join('')}<th class="num">Ticket médio líquido</th></tr></thead><tbody>
       ${linhas ? linhas.map((l) => `<tr><td>${esc(l.serie)}º</td><td class="num">${int(l.qtd)}</td><td class="num">${n2(l.ticket)}</td>${r.topicos.map((t) => `<td class="num">${n2(l.valores[t])}</td>`).join('')}<td class="num">${n2(l.ticketLiquido)}</td></tr>`).join('') +
@@ -875,14 +903,14 @@
         <button class="btn ghost" data-action="aj-importar" type="button">Importar ajustes de uma planilha do resumo</button>
         <span class="small muted" style="flex:1;min-width:240px">A importação lê a aba Razão da planilha e traz para revisão só os lançamentos digitados à mão que a regra automática não explica.</span>
       </div>
-      <div class="toolbar"><div class="chips" role="group" aria-label="Situação">${[['revisar', 'Para revisar'], ['ativo', 'Ativos'], ['revogado', 'Revogados']].map(([v, t]) => `<button type="button" class="chip ${f === v ? 'on' : ''}" data-action="aj-filtro" data-v="${v}">${t} · ${int(cont[v])}</button>`).join('')}</div>
+      <div class="aj-grid"><div class="aj-main"><div class="toolbar"><div class="chips" role="group" aria-label="Situação">${[['revisar', 'Para revisar'], ['ativo', 'Ativos'], ['revogado', 'Revogados']].map(([v, t]) => `<button type="button" class="chip ${f === v ? 'on' : ''}" data-action="aj-filtro" data-v="${v}">${t} · ${int(cont[v])}</button>`).join('')}</div>
         ${f === 'revisar' && cont.revisar ? `<button class="btn sm" type="button" data-action="aj-aceitar-todos">Aceitar os ${int(cont.revisar)} para revisar</button>` : ''}</div>
       ${vis.length ? `<div class="tbl-wrap tbl-scroll"><table><thead><tr><th>RA</th><th>Unidade</th><th>Alcance</th><th>Ajuste</th><th class="num">Valor</th><th>Motivo</th><th>Registro</th><th></th></tr></thead><tbody>
         ${vis.map((x) => `<tr><td class="mono">${esc(x.ra)}</td><td>${esc(x.unidade || '-')}</td><td class="small">${x.doc ? `Lançamento ${esc(x.doc)}${x.conta ? ' · conta ' + esc(x.conta) : ''}` : 'Todos os lançamentos do RA'}</td><td>${esc(fmtAj(x))}</td><td class="num">${x.valor != null && x.valor !== '' ? n2(x.valor) : '-'}</td>
           <td><input type="text" data-ajmotivo="${x.i}" value="${esc(x.motivo || '')}" placeholder="Obrigatório" aria-label="Motivo do ajuste" style="min-width:200px"></td><td class="small muted">${esc(x.por || '')}${x.em ? '<br>' + esc(x.em) : ''}</td>
           <td style="white-space:nowrap">${st(x) === 'revisar' ? `<button class="btn sm" type="button" data-action="aj-status" data-i="${x.i}" data-v="ativo">Aceitar</button> <button class="btn ghost sm" type="button" data-action="aj-excluir" data-i="${x.i}">Descartar</button>` : st(x) === 'ativo' ? `<button class="btn danger sm" type="button" data-action="aj-status" data-i="${x.i}" data-v="revogado">Revogar</button>` : `<button class="btn ghost sm" type="button" data-action="aj-status" data-i="${x.i}" data-v="ativo">Reativar</button>`}</td></tr>`).join('')}
       </tbody></table></div>` : `<div class="empty">${f === 'revisar' ? 'Nada para revisar.' : f === 'ativo' ? 'Nenhum ajuste ativo.' : 'Nenhum ajuste revogado.'}</div>`}
-      <div class="card" style="margin-top:16px;background:var(--navy-ll)"><h3 style="margin-bottom:10px">Novo ajuste</h3><div class="row">
+      </div><aside class="card aj-form" aria-label="Novo ajuste"><h3 style="margin-bottom:12px">Novo ajuste</h3><div class="aj-campos">
         <label class="fld">RA<input type="text" data-bind="regras.aj.ra" value="${esc(a.ra)}" style="width:140px"></label>
         <label class="fld">Lançamento (opcional)<input type="text" data-bind="regras.aj.doc" value="${esc(a.doc)}" placeholder="LOTE/SUB/DOC/LINHA" style="width:180px"></label>
         <label class="fld">Conta (opcional)<input type="text" data-bind="regras.aj.conta" value="${esc(a.conta)}" style="width:140px"></label>
@@ -891,7 +919,7 @@
         <label class="fld">Tipo de aluno<select data-bind="regras.aj.tipo"><option value="">Manter</option>${['PAGANTE', 'PROUNI', 'FIES'].map((t) => `<option ${a.tipo === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
         <label class="fld" style="flex:1;min-width:220px">Motivo<input type="text" data-bind="regras.aj.motivo" value="${esc(a.motivo)}" placeholder="Por que o semestre ou o tipo muda"></label>
         <button class="btn" type="button" data-action="aj-salvar">Salvar ajuste</button></div>
-        <p class="small muted" style="margin-top:8px">Sem lançamento, o ajuste vale para todos os lançamentos do RA. Com lançamento, informe também conta e valor para não pegar outras linhas do mesmo documento. Vale na próxima vez que o resumo for processado.</p></div>`;
+        <p class="small muted" style="margin-top:10px">Sem lançamento, o ajuste vale para todos os lançamentos do RA. Com lançamento, informe também conta e valor para não pegar outras linhas do mesmo documento. Vale na próxima vez que o resumo for processado.</p></aside></div>`;
   }
 
   // Lê a aba Razão de uma planilha do resumo e traz os lançamentos com tipo/semestre digitado à mão que a regra automática não explica.
