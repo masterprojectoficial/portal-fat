@@ -52,7 +52,7 @@ Enquanto uma frente está com a aprovadora, ninguém reprocessa nem muda as deci
 - Saídas (após aprovação): relatório final em HTML, Excel da conferência e lista de reprocessamento.
 
 **Frente 2 - Resumo de Tópicos**
-- Entradas: Razão do Protheus (contas de resultado) e Base de Alunos do BI. A lista de alunos por matrícula do Lyceum é opcional (reserva para RA não encontrado).
+- Entradas: Razão do Protheus (contas de resultado) e Base de Alunos do BI. A base pode ser a aba tratada da planilha (RA, Tipo de Aluno, Unidade BI) ou a exportação direta do BI (aba Export). Na exportação, o portal usa `MATRICULA`, `CLASSIFICACAO_TIPO_PAGANTE`, `ATIVOS_HOJE` e `CODIGO_UNIDADE` + `NOME_CURSO`: o curso "Medicina" (parâmetro `cursoMedicina`) fica na unidade MED e os demais cursos, inclusive Medicina Veterinária e Biomedicina, vão para a variante EXMED/ODON. A lista de alunos por matrícula do Lyceum é opcional (reserva para RA não encontrado).
 - Monta o resumo por unidade, tipo de aluno (pagante, ProUni, FIES) e semestre, com impostos (ISS) e PDD calculados pelos percentuais de cada unidade.
 - Check razão x resumo e alunos BI x resumo, mais as exceções (sem aluno, fora das unidades, contas sem tópico).
 - Saídas (após aprovação): relatório final em HTML e Excel com consolidado, check e uma aba por unidade.

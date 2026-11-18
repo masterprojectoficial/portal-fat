@@ -20,6 +20,7 @@
     },
     "loteIntegracao": "008888",
     "centroCustoMedicina": "1.2.8.307",
+    "cursoMedicina": "Medicina",
     "tiposOperacao": [
       {
         "codigo": "1",

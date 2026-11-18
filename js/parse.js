@@ -52,6 +52,8 @@
     { tipo: 'movLyceum', nome: 'Movimentação Contábil (Lyceum)', req: ['ID_OPERACAO', 'TIPO_OPERACAO', 'DATACONTAB', 'VALOR'] },
     { tipo: 'razao', nome: 'Razão (Protheus)', req: ['CONTA', 'LOTE/SUB/DOC/LINHA', 'HISTORICO', 'DEBITO', 'CREDITO'] },
     { tipo: 'baseAlunos', nome: 'Base de Alunos (BI)', req: ['RA', 'TIPO DE ALUNO', 'UNIDADE BI'] },
+    // Exportação direta do BI (aba Export): a Unidade BI sai do código da unidade + curso (ver resumo.js)
+    { tipo: 'baseAlunos', nome: 'Base de Alunos (BI) - exportação', req: ['MATRICULA', 'CLASSIFICACAO_TIPO_PAGANTE', 'CODIGO_UNIDADE'], mapper: 'baseAlunosExport' },
     { tipo: 'alunosLyceum', nome: 'Alunos por matrícula (Lyceum)', req: ['MATRICULA', 'SEMESTRE', 'TIPO'] },
   ];
 
@@ -125,6 +127,17 @@
         serie: parseNum(r[c['SERIE']]),
       };
     },
+    baseAlunosExport(r, c) {
+      return {
+        ra: String(r[c['MATRICULA']] ?? '').trim(),
+        status: c['ATIVOS_HOJE'] != null ? parseNum(r[c['ATIVOS_HOJE']]) : 1,
+        tipoAluno: norm(r[c['CLASSIFICACAO_TIPO_PAGANTE']]),
+        unidadeBI: '',
+        codigoUnidade: String(r[c['CODIGO_UNIDADE']] ?? '').trim(),
+        curso: String(r[c['NOME_CURSO']] ?? '').trim(),
+        serie: parseNum(r[c['SERIE']]),
+      };
+    },
     alunosLyceum(r, c) {
       return {
         ra: String(r[c['MATRICULA']] ?? '').trim(),
@@ -162,7 +175,7 @@
       const h = findHeader(aoa);
       if (!h) continue;
       const hdrNorm = (aoa[h.row] || []).map(norm);
-      const map = MAPPERS[h.sig.tipo];
+      const map = MAPPERS[h.sig.mapper || h.sig.tipo];
       const rows = [];
       for (let i = h.row + 1; i < aoa.length; i++) {
         const r = aoa[i];

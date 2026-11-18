@@ -68,9 +68,19 @@
     const alunosBI = {};
     unidades.forEach((u) => { qtd[u.nome] = { PAGANTE: {}, PROUNI: {}, FIES: {} }; alunosBI[u.nome] = 0; });
     const uByBI = new Map(unidades.map((u) => [norm(u.unidadeBI), u]));
+    // Exportação direta do BI: curso de medicina fica na unidade do código; os demais vão para a variante
+    // cadastrada com o mesmo código + sufixo (ex.: "IMEPAC -ARAGUARI EXMED", "ZARNS-PA ODON").
+    const cursoMed = norm(config.cursoMedicina || 'Medicina');
+    const unidadeBIde = (a) => {
+      if (a.unidadeBI || !a.codigoUnidade) return a.unidadeBI;
+      if (norm(a.curso) === cursoMed) return a.codigoUnidade;
+      const cod = norm(a.codigoUnidade);
+      const alt = unidades.find((u) => norm(u.unidadeBI) !== cod && norm(u.unidadeBI).startsWith(cod + ' '));
+      return alt ? alt.unidadeBI : a.codigoUnidade;
+    };
     for (const a of baseAlunos) {
       if (a.status !== 1) continue;
-      const u = uByBI.get(norm(a.unidadeBI));
+      const u = uByBI.get(norm(unidadeBIde(a)));
       const t = tipoAluno(a.tipoAluno);
       if (!u || !t) continue;
       qtd[u.nome][t][a.serie] = (qtd[u.nome][t][a.serie] || 0) + 1;
