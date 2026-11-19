@@ -147,7 +147,7 @@
     const box = document.getElementById('userbox'); if (!box) return;
     const PAP = { admin: 'administradora', executora: 'executora', aprovadora: 'aprovadora', ambos: 'executa e aprova' };
     const ini = R.me.nome.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('');
-    box.innerHTML = `<div class="me"><span class="av" aria-hidden="true">${esc(ini)}</span><span class="me-tx"><b>${esc(R.me.nome)}</b><small>${PAP[R.me.papel] || ''}</small></span></div><div class="me-links"><a href="#senha">Trocar senha</a><a href="#" data-sair>Sair</a></div><div class="foot">Master Project · versão 1.6.1</div>`;
+    box.innerHTML = `<div class="me"><span class="av" aria-hidden="true">${esc(ini)}</span><span class="me-tx"><b>${esc(R.me.nome)}</b><small>${PAP[R.me.papel] || ''}</small></span></div><div class="me-links"><a href="#senha">Trocar senha</a><a href="#" data-sair>Sair</a></div><div class="foot">Master Project · versão 1.6.2</div>`;
     box.querySelector('[data-sair]').addEventListener('click', (e) => { e.preventDefault(); salvarPendentes().finally(R.sair); });
     if (R.me.papel === 'admin') document.getElementById('navUsuarios').classList.remove('hidden');
   }
@@ -828,8 +828,17 @@
   }
 
   // ======================================================== REGRAS
-  const CAMPOS_COND = ['', 'PRINCIP_COD_LANC', 'TIPO_ENCARGO', 'CODIGO_LANC', 'TIPO_PAGAMENTO'];
+  const CAMPOS_COND = ['', 'PRINCIP_COD_LANC', 'TIPO_ENCARGO', 'CODIGO_LANC', 'TIPO_PAGAMENTO', 'ADIANTAMENTO', 'TIPODESCONTO'];
   const descCond = (c) => (!c ? 'Sempre' : `${c.campo} ${c.operador === 'vazio_ou_em' ? 'vazio ou em' : 'em'} [${(c.valores || []).join(', ')}]`);
+  const NOME_CAMPO = { PRINCIP_COD_LANC: 'Código principal do lançamento', TIPO_ENCARGO: 'Tipo de encargo', CODIGO_LANC: 'Código do lançamento', TIPO_PAGAMENTO: 'Tipo de pagamento', ADIANTAMENTO: 'Adiantamento (S ou N)', TIPODESCONTO: 'Tipo de desconto' };
+  // A condição em português: "quando Tipo de encargo for MULTA ou JUROS".
+  function quandoTexto(c) {
+    if (!c || !c.campo) return 'em qualquer caso';
+    const v = (c.valores || []).map((x) => `"${x}"`);
+    const lista = v.length > 1 ? v.slice(0, -1).join(', ') + ' ou ' + v[v.length - 1] : v[0] || '""';
+    return `quando ${NOME_CAMPO[c.campo] || c.campo} ${c.operador === 'vazio_ou_em' ? 'estiver vazio ou for ' : 'for '}${lista}`;
+  }
+  const rotinaDoTipo = (tipo) => { const t = config.tiposOperacao.find((x) => String(x.codigo) === String(tipo)); return t ? t.tipo : ''; };
 
   function vRegras() {
     const s = state.regras;
@@ -860,14 +869,26 @@
         <label class="fld" style="flex:1;min-width:200px">Ação<input type="text" id="r-acao" value="${esc(e.acao)}"></label></div>
       <label class="fld" style="margin-bottom:12px">Análise (justificativa)<textarea id="r-analise">${esc(e.analise)}</textarea></label>
       <div class="row" style="margin-bottom:14px">
-        <label class="fld">Condição - campo<select id="r-campo">${CAMPOS_COND.map((x) => `<option value="${x}" ${(c.campo || '') === x ? 'selected' : ''}>${x || 'Sem condição (sempre justifica)'}</option>`).join('')}</select></label>
+        <label class="fld">Condição - campo<select id="r-campo">${CAMPOS_COND.map((x) => `<option value="${x}" ${(c.campo || '') === x ? 'selected' : ''}>${x ? esc(NOME_CAMPO[x] || x) + ' · ' + x : 'Sem condição (sempre justifica)'}</option>`).join('')}</select></label>
         <label class="fld">Operador<select id="r-op"><option value="em" ${c.operador !== 'vazio_ou_em' ? 'selected' : ''}>está em</option><option value="vazio_ou_em" ${c.operador === 'vazio_ou_em' ? 'selected' : ''}>vazio ou está em</option></select></label>
         <label class="fld" style="flex:1;min-width:220px">Valores (separados por vírgula)<input type="text" id="r-valores" value="${esc((c.valores || []).join(', '))}"></label></div>
+      <div class="alert info" style="margin-bottom:14px"><div><b>Como fica a regra hoje:</b>Operação do tipo ${esc(e.tipo || '?')} que não integrou é justificada ${esc(quandoTexto(e.condicao))}. Os valores são comparados sem diferença de maiúsculas e acentos.</div></div>
       <div class="btns"><button class="btn" data-action="regra-salvar">Salvar regra</button><button class="btn ghost" data-action="regra-cancelar">Cancelar</button></div></div>` : '';
-    return form + `<div class="btns" style="margin-bottom:12px"><button class="btn sm" data-action="regra-nova">Nova regra</button><span class="small muted">${config.regras.length} regras · uma operação que não integrou e se encaixa numa regra vira "justificada".</span></div>
-      <div class="tbl-wrap"><table><thead><tr><th>Tipo</th><th>Nome</th><th>Condição</th><th>Análise</th><th>Ação</th><th></th></tr></thead><tbody>
-      ${config.regras.map((r, i) => `<tr><td>${esc(r.tipo)}</td><td>${esc(r.nome)}</td><td class="small mono">${esc(descCond(r.condicao))}</td><td class="small">${esc(r.analise)}</td><td class="small">${esc(r.acao)}</td>
-        <td style="white-space:nowrap"><button class="btn ghost sm" data-action="regra-editar" data-i="${i}">Editar</button> <button class="btn danger sm" data-action="regra-excluir" data-i="${i}">Excluir</button></td></tr>`).join('')}
+    const res = state.f1.res, filtro = s.rotinaFiltro || '';
+    const usos = (r) => (res ? res.justificados.filter((j) => j.tipoOp === String(r.tipo) && j.regraAnalise === r.analise).length : null);
+    const lista = config.regras.map((r, i) => ({ r, i, rotina: rotinaDoTipo(r.tipo) })).filter((x) => !filtro || x.rotina === filtro);
+    const rotinas = [...new Set(config.regras.map((r) => rotinaDoTipo(r.tipo)).filter(Boolean))];
+    const comoFunciona = `<ol class="passos" style="margin-bottom:16px" aria-label="Como uma regra funciona">
+        <li><b>1. O Lyceum gera a operação</b>Cada baixa ou faturamento vira uma operação na Movimentação Contábil.</li>
+        <li><b>2. Ela não chegou no Protheus</b>Não aparece no relatório de Integração.</li>
+        <li><b>3. O portal procura uma regra</b>Do mesmo tipo de operação, e confere a condição (se houver).</li>
+        <li><b>4. Resultado</b>Achou: vira <span class="pill ok">Justificada</span>. Não achou: vira <span class="pill bad">Pendência</span>.</li></ol>`;
+    return form + comoFunciona + `<div class="btns" style="margin-bottom:12px"><button class="btn sm" data-action="regra-nova">Nova regra</button>
+        <div class="seg" role="group" aria-label="Rotina"><button type="button" data-action="regra-filtro" data-v="" class="${filtro ? '' : 'on'}">Todas · ${config.regras.length}</button>${rotinas.map((t) => `<button type="button" data-action="regra-filtro" data-v="${esc(t)}" class="${filtro === t ? 'on' : ''}">${esc(t === 'Baixa' ? 'Baixas' : t)} · ${config.regras.filter((r) => rotinaDoTipo(r.tipo) === t).length}</button>`).join('')}</div>
+        ${res ? `<span class="small muted">Coluna "Usada" conta as operações justificadas na conferência aberta (${esc(res.rotina === 'Baixa' ? 'Baixas' : 'Faturamento')} ${esc(compBR(state.f1.competencia))}).</span>` : ''}</div>
+      <div class="tbl-wrap"><table><thead><tr><th>Regra</th><th>Rotina</th><th>Por que não sobe para o Protheus</th><th>Ação</th>${res ? '<th class="num">Usada</th>' : ''}<th></th></tr></thead><tbody>
+      ${lista.map(({ r, i, rotina }) => { const u = usos(r); return `<tr><td><b>Tipo ${esc(r.tipo)} · ${esc(r.nome)}</b><div class="small muted">Justifica ${esc(quandoTexto(r.condicao))}</div></td><td class="small">${esc(rotina === 'Baixa' ? 'Baixas' : rotina || '-')}</td><td class="small">${esc(r.analise)}</td><td class="small">${esc(r.acao)}</td>${res ? `<td class="num">${u ? int(u) : '<span class="muted">0</span>'}</td>` : ''}
+        <td style="white-space:nowrap"><button class="btn ghost sm" data-action="regra-editar" data-i="${i}">Editar</button> <button class="btn danger sm" data-action="regra-excluir" data-i="${i}">Excluir</button></td></tr>`; }).join('')}
       </tbody></table></div>`;
   }
 
@@ -1262,6 +1283,7 @@
       case 'cfg-importar': $json.value = ''; $json.click(); break;
       case 'cfg-reset': if (confirm(R.ativo ? 'Restaurar todos os parâmetros para o padrão? As alterações feitas no portal serão perdidas para todo mundo.' : 'Restaurar todos os parâmetros para o padrão? As alterações feitas neste navegador serão perdidas.')) { config = R.ativo ? FAT.store.clone(FAT.DEFAULT_CONFIG) : FAT.store.resetConfig(); if (R.ativo) salvarConfig(); toast('Parâmetros restaurados.'); render(); } break;
       case 'regra-nova': rg.edit = -1; render(); break;
+      case 'regra-filtro': rg.rotinaFiltro = el.dataset.v; render(); break;
       case 'regra-editar': rg.edit = +el.dataset.i; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); break;
       case 'regra-cancelar': rg.edit = null; render(); break;
       case 'regra-excluir': { const r = config.regras[+el.dataset.i]; if (confirm(`Excluir a regra do tipo ${r.tipo} (${r.nome})?`)) { config.regras.splice(+el.dataset.i, 1); salvarConfig(); render(); } break; }

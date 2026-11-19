@@ -1415,6 +1415,45 @@
     ],
     "regras": [
       {
+        "tipo": "18",
+        "nome": "Baixa por Desconto",
+        "analise": "Desconto de pagamento antecipado em cobrança de adiantamento (ADIANTAMENTO = S): o Lyceum lança em conta base não contábil e não sobe para o Protheus na baixa.",
+        "acao": "Não parametrizar (adiantamento)",
+        "condicao": {
+          "campo": "ADIANTAMENTO",
+          "operador": "em",
+          "valores": [
+            "S"
+          ]
+        }
+      },
+      {
+        "tipo": "63",
+        "nome": "Desconto a Maior",
+        "analise": "Desconto em cobrança de adiantamento (ADIANTAMENTO = S): o Lyceum lança em conta base não contábil e não sobe para o Protheus na baixa.",
+        "acao": "Não parametrizar (adiantamento)",
+        "condicao": {
+          "campo": "ADIANTAMENTO",
+          "operador": "em",
+          "valores": [
+            "S"
+          ]
+        }
+      },
+      {
+        "tipo": "1018",
+        "nome": "Estorno de Baixa por Desconto",
+        "analise": "Estorno de desconto em cobrança de adiantamento (ADIANTAMENTO = S): o Lyceum lança em conta base não contábil e não sobe para o Protheus na baixa.",
+        "acao": "Não parametrizar (adiantamento)",
+        "condicao": {
+          "campo": "ADIANTAMENTO",
+          "operador": "em",
+          "valores": [
+            "S"
+          ]
+        }
+      },
+      {
         "tipo": "32",
         "nome": "Cobrança de Outras Dívidas",
         "analise": "Não contabilizar quando o PRINCIP_COD_LANC Outros",
