@@ -124,9 +124,17 @@
     }
     Object.entries(c.arquivos || {}).forEach(([t, m]) => { if (!s.reports[t] || !s.reports[t].rows) s.reports[t] = m; });
   }
+  // Começa uma conferência nova (outra rotina ou competência) sem mexer na que já está gravada.
+  function novaConferencia(fr) {
+    const s = state[fr];
+    if (s.res && s.fluxo.status === 'em_aprovacao') { toast('Esta frente está com a aprovadora. Espere a aprovação ou a devolução antes de começar outra.'); return false; }
+    s.nova = true; s.id = null; s.res = null; s.conf = null; s.decisoes = {}; s.aval = {}; s.fluxo = fluxoNovo(); s.sel = ''; s.avalFiltro = 'todos'; s.avalBusca = '';
+    Object.keys(s.reports).forEach((t) => { if (!s.reports[t].rows) delete s.reports[t]; });
+    return true;
+  }
   async function sincronizar(rota) {
     try {
-      if (['inicio', 'frente1', 'frente2'].includes(rota)) { const c = await R.api('GET', 'conferencias?atual=1'); aplicarConf('f1', c.f1); aplicarConf('f2', c.f2); }
+      if (['inicio', 'frente1', 'frente2'].includes(rota)) { const c = await R.api('GET', 'conferencias?atual=1'); if (!state.f1.nova) aplicarConf('f1', c.f1); if (!state.f2.nova) aplicarConf('f2', c.f2); }
       if (rota === 'inicio' || rota === 'historico') R.historico = await R.api('GET', 'historico');
       if (rota === 'usuarios' && papel() === 'admin') R.usuarios = await R.api('GET', 'usuarios');
     } catch (e) { toast('Não consegui atualizar: ' + e.message); }
@@ -139,7 +147,7 @@
     const box = document.getElementById('userbox'); if (!box) return;
     const PAP = { admin: 'administradora', executora: 'executora', aprovadora: 'aprovadora', ambos: 'executa e aprova' };
     const ini = R.me.nome.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('');
-    box.innerHTML = `<div class="me"><span class="av" aria-hidden="true">${esc(ini)}</span><span class="me-tx"><b>${esc(R.me.nome)}</b><small>${PAP[R.me.papel] || ''}</small></span></div><div class="me-links"><a href="#senha">Trocar senha</a><a href="#" data-sair>Sair</a></div><div class="foot">Master Project · versão 1.6</div>`;
+    box.innerHTML = `<div class="me"><span class="av" aria-hidden="true">${esc(ini)}</span><span class="me-tx"><b>${esc(R.me.nome)}</b><small>${PAP[R.me.papel] || ''}</small></span></div><div class="me-links"><a href="#senha">Trocar senha</a><a href="#" data-sair>Sair</a></div><div class="foot">Master Project · versão 1.6.1</div>`;
     box.querySelector('[data-sair]').addEventListener('click', (e) => { e.preventDefault(); salvarPendentes().finally(R.sair); });
     if (R.me.papel === 'admin') document.getElementById('navUsuarios').classList.remove('hidden');
   }
@@ -198,6 +206,13 @@
   const tituloEtapa = (n, t, on = true) => `<div class="title-row"><span class="step ${on ? '' : 'off'}">${n}</span><h2>${esc(t)}</h2></div>`;
   const iconeUpload = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 15V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M4 15v4h16v-4"/></svg>';
 
+  function botaoNova(fr) {
+    const s = state[fr];
+    if (!podeExecutar()) return '';
+    if (s.res && s.fluxo.status !== 'em_aprovacao') return `<div class="btns"><button type="button" class="btn ghost" data-action="nova-conf" data-fr="${fr}">+ Nova conferência</button></div>`;
+    if (!s.res && s.nova) return `<div class="btns"><button type="button" class="btn ghost" data-action="voltar-conf" data-fr="${fr}">Voltar para a última conferência</button></div>`;
+    return '';
+  }
   const soExecutora = (inner) => (podeExecutar() ? inner : '<p class="small muted" style="margin-bottom:12px">Quem sobe os relatórios e processa é a executora.</p>' + roAbre(false) + inner + roFecha(false));
   function blocoAprovacao(fr) {
     const s = state[fr];
@@ -310,7 +325,7 @@
     if (st === 'em_aprovacao') return aprov
       ? { vez: true, t: 'Dar o aval e decidir', p: [`No painel "Aval da aprovadora", avalie cada item: De acordo (tecla A) ou Não de acordo (tecla N). Use as setas para navegar. Ao marcar de acordo, o portal já vai para o próximo item.`, 'Em item com problema, marque Não de acordo e escreva a observação: ela volta junto com a devolução.', 'Em "Decisão final", marque a confirmação de que revisou e clique em "Aprovar". Se algum item estiver em desacordo, use "Devolver para ajuste".'] }
       : { vez: false, t: `Com ${esc(quemAprova)} para aprovação`, p: [enviouEu(s) && separaFuncoes() && papel() !== 'admin' ? 'Você enviou esta conferência e os parâmetros pedem aprovação por outra pessoa. Enquanto isso, as decisões ficam travadas.' : 'A aprovadora está dando o aval item a item. Se ela devolver, a conferência volta para a sua fila com os itens marcados.'] };
-    return { vez: true, t: 'Aprovado: pegar o resultado final', p: [`No fim da página, em "Resultado final", baixe o relatório em HTML (com o carimbo da aprovação) e o Excel${f1 ? ', e a lista de reprocessamento só com os dias e unidades pendentes' : ' com uma aba por unidade'}.`, 'O relatório também fica guardado no "Histórico de aprovações" para qualquer pessoa reabrir.', 'Para a próxima competência, é só subir os novos relatórios.'] };
+    return { vez: true, t: 'Aprovado: pegar o resultado final', p: [`No fim da página, em "Resultado final", baixe o relatório em HTML (com o carimbo da aprovação) e o Excel${f1 ? ', e a lista de reprocessamento só com os dias e unidades pendentes' : ' com uma aba por unidade'}.`, 'O relatório também fica guardado no "Histórico de aprovações" para qualquer pessoa reabrir.', 'Para conferir outra rotina ou outra competência, clique em "+ Nova conferência" no topo da página. Esta aprovação continua guardada no histórico.'] };
   }
 
   // Checklist da conferência: cada etapa com quem faz, situação e atalho até a seção.
@@ -400,7 +415,7 @@
     const tabelasNoArquivo = s.reports.tipoOperacao || s.reports.regra;
     let html = cabecalho('Frente 1', 'Conferência da Integração',
       'Confere se tudo que foi gerado no Lyceum subiu para o Protheus e entrou no razão. O "verde" da integração não basta: só o cruzamento com o razão confirma.',
-      '') + painelFluxo(FR_ATUAL(), pronto);
+      botaoNova('f1')) + painelFluxo(FR_ATUAL(), pronto);
 
     html += blocoAprovacao('f1');
     const upInner = `<div class="row" style="margin-bottom:16px">
@@ -719,7 +734,7 @@
     const pronto = !!(s.reports.razao && s.reports.razao.rows && s.reports.baseAlunos && s.reports.baseAlunos.rows);
     let html = cabecalho('Frente 2', 'Resumo de Tópicos',
       'Abertura da receita por unidade, tipo de aluno (pagante, ProUni, FIES) e semestre, a partir da mesma base: razão do Protheus classificado por tópico e base de alunos do BI.',
-      '') + painelFluxo(FR_ATUAL(), pronto);
+      botaoNova('f2')) + painelFluxo(FR_ATUAL(), pronto);
 
     html += blocoAprovacao('f2');
     const upInner = `<div class="row" style="margin-bottom:16px"><label class="fld">Competência<input type="month" data-bind="f2.competencia" value="${esc(s.competencia)}"></label>
@@ -1070,7 +1085,7 @@
     overlay('Gravando no portal...');
     try {
       const c = await R.api('POST', 'conferencias', { frente: fr, rotina: fr === 'f1' ? s.rotina : null, competencia: s.competencia, resultado: s.res, arquivos: metaArquivos(s.reports, arqs) });
-      s.id = null; aplicarConf(fr, c);
+      s.id = null; s.nova = false; aplicarConf(fr, c);
       toast('Conferência gravada no portal.');
     } catch (e) {
       toast(e.message); s.res = null; s.id = null;
@@ -1184,7 +1199,9 @@
     const a = el.dataset.action, f1 = state.f1, f2 = state.f2, rg = state.regras;
     switch (a) {
       case 'upload': state.uploadAlvo = el.dataset.alvo; $file.value = ''; $file.click(); break;
-      case 'f1-rotina': f1.rotina = el.dataset.v; if (f1.res) { f1.res = null; toast('Rotina alterada. Processe a conferência novamente.'); } render(); break;
+      case 'f1-rotina': if (f1.rotina === el.dataset.v) break; if (f1.res && !novaConferencia('f1')) break; f1.rotina = el.dataset.v; toast('Rotina alterada: suba os relatórios e processe.'); render(); break;
+      case 'nova-conf': { const fr = el.dataset.fr; if (novaConferencia(fr)) { render(); window.scrollTo(0, 0); toast('Nova conferência: escolha a rotina e a competência e suba os arquivos.'); } break; }
+      case 'voltar-conf': { const fr = el.dataset.fr; state[fr].nova = false; sincronizar(fr === 'f1' ? 'frente1' : 'frente2').then(render); break; }
       case 'f1-processar': processarF1(); break;
       case 'f1-limpar': f1.reports = {}; if (!R.ativo) f1.res = null; render(); break;
       case 'f1-filtro': f1.filtro = el.dataset.v; render(); break;
@@ -1340,6 +1357,8 @@
   $main.addEventListener('change', (ev) => {
     const el = ev.target;
     if (el.dataset.bind && el.type !== 'search' && el.type !== 'text') {
+      const frc = el.dataset.bind.endsWith('.competencia') && el.dataset.bind.split('.')[0];
+      if (frc && state[frc].res && state[frc].competencia !== el.value && !novaConferencia(frc)) { el.value = state[frc].competencia; return; }
       aplicarBind(el);
       if (el.tagName === 'SELECT' || el.dataset.bind.endsWith('competencia')) render();
     }
